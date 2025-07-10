@@ -1,1 +1,14 @@
-
+{
+    "config": {
+        "step": {
+            "user": {
+                "title": "Lawn Manager",
+                "description": "Configure your grass type and zones.",
+                "data": {
+                    "grass_type": "Grass Type",
+                    "zones": "Zones"
+                }
+            }
+        }
+    }
+}
