@@ -1,1 +1,9 @@
-
+{
+    "domain": "lawn_manager",
+    "name": "Lawn Manager",
+    "version": "1.0.0",
+    "documentation": "https://github.com/tpdean93/Lawn_Manager",
+    "dependencies": [],
+    "codeowners": ["@tpdean93"],
+    "requirements": []
+}
