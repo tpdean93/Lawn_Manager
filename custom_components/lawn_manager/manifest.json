@@ -1,9 +1,57 @@
-{
-    "domain": "lawn_manager",
-    "name": "Lawn Manager",
-    "version": "1.0.0", 
-    "documentation": "https://github.com/tpdean93/Lawn_Manager",
-    "dependencies": [],
-    "codeowners": ["@tpdean93"],
-    "requirements": []
+{DOMAIN = "lawn_manager"
+
+PLATFORM = "sensor"
+
+CONF_NAME = "name"
+CONF_LOCATION = "location"
+CONF_GRASS_TYPE = "grass_type"
+CONF_SPREADERS = "spreaders"
+CONF_CHEMICALS = "chemicals"
+CONF_MOW_INTERVAL = "mow_interval"
+CONF_WATER_THRESHOLD = "water_threshold"
+CONF_WEATHER_API = "weather_api"
+
+DEFAULT_NAME = "Lawn Manager"
+DEFAULT_MOW_INTERVAL = 7  # days
+DEFAULT_WATER_THRESHOLD = 0.5  # inches of rain in 7 days
+
+ATTR_LAST_MOW = "last_mow"
+ATTR_NEXT_MOW_DUE = "next_mow_due"
+ATTR_TOTAL_RAINFALL = "total_rainfall"
+ATTR_HEATWAVE = "heatwave"
+ATTR_APPLICATION_HISTORY = "application_history"
+ATTR_NEXT_APPLICATION_DUE = "next_application_due"
+
+GRASS_TYPES = [
+    "Bermuda",
+    "Zoysia",
+    "St. Augustine",
+    "Fescue",
+    "Kentucky Bluegrass",
+    "Ryegrass",
+]
+
+SPREADERS = [
+    "Broadcast",
+    "Drop",
+    "Handheld",
+]
+
+CHEMICALS = {
+    "Fertilizer 10-10-10": {
+        "interval_days": 30,
+        "amount_lb_per_1000sqft": 1.0
+    },
+    "Weed Preventer": {
+        "interval_days": 90,
+        "amount_lb_per_1000sqft": 2.0
+    },
+    "Grub Killer": {
+        "interval_days": 180,
+        "amount_lb_per_1000sqft": 2.5
+    },
+    "Iron Supplement": {
+        "interval_days": 45,
+        "amount_lb_per_1000sqft": 0.5
+    }
 }
