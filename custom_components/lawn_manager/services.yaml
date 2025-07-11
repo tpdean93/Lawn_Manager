@@ -7,7 +7,7 @@ log_application:
   description: Logs a chemical application to track usage and scheduling.
   fields:
     chemical_select:
-      name: Chemical Name (Predefined)
+      name: Chemical Name
       description: Select from common chemicals. If your chemical isn't listed, enter it below.
       required: true
       selector:
@@ -22,6 +22,7 @@ log_application:
             - "Disease Preventer"
             - "Soil Conditioner"
             - "Insecticide"
+            - "Custom"
     custom_chemical:
       name: Custom Chemical Name
       description: Optional custom chemical name if it's not in the list above.
@@ -37,3 +38,9 @@ log_application:
           options:
             - "Sprayer"
             - "Spreader"
+            - "Other"
+
+reload:
+  name: Reload Lawn Manager
+  description: Reload the Lawn Manager integration without restarting Home Assistant.
+  fields: {}
