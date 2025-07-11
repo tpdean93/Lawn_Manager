@@ -1,10 +1,14 @@
 from homeassistant.components.button import ButtonEntity
 from homeassistant.core import HomeAssistant
 from homeassistant.config_entries import ConfigEntry
+import logging
 
 from .const import DOMAIN
 
+_LOGGER = logging.getLogger(__name__)
+
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities):
+    _LOGGER.info("Setting up Lawn Manager button entities")
     entities = [
         LogMowButton(hass, entry),
         LogChemicalButton(hass, entry),
@@ -14,10 +18,21 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
 class LogMowButton(ButtonEntity):
     def __init__(self, hass, entry):
         self._hass = hass
+        self._entry = entry
         self._attr_name = "Log Mow"
         self._attr_unique_id = f"{entry.entry_id}_log_mow"
+        self._attr_icon = "mdi:grass"
+
+    @property
+    def device_info(self):
+        return {
+            "identifiers": {(DOMAIN, self._entry.entry_id)},
+            "name": "Lawn Manager",
+            "manufacturer": "Custom Integration",
+        }
 
     async def async_press(self):
+        _LOGGER.info("Log Mow button pressed")
         await self._hass.services.async_call(
             DOMAIN, "log_mow", {}, blocking=True
         )
@@ -25,13 +40,76 @@ class LogMowButton(ButtonEntity):
 class LogChemicalButton(ButtonEntity):
     def __init__(self, hass, entry):
         self._hass = hass
-        self._attr_name = "Log Chemical Application (Default)"
+        self._entry = entry
+        self._attr_name = "Log Chemical Application"
         self._attr_unique_id = f"{entry.entry_id}_log_chemical"
+        self._attr_icon = "mdi:flask-outline"
+
+    @property
+    def device_info(self):
+        return {
+            "identifiers": {(DOMAIN, self._entry.entry_id)},
+            "name": "Lawn Manager",
+            "manufacturer": "Custom Integration",
+        }
 
     async def async_press(self):
-        # This uses a default chemical for demonstration. You can enhance this to prompt for input.
+        _LOGGER.warning("Log Chemical Application button pressed - DEBUG")
+        
+        # Find entities by searching through all states
+        chemical_select_entity = None
+        custom_chemical_entity = None
+        method_select_entity = None
+        
+        # Search for our entities in all states
+        for state in self._hass.states.async_all():  # ✅ Iterate through State objects
+            entity_id = state.entity_id  # ✅ Get entity_id from State object
+            if entity_id.startswith("select.") and "chemical_select" in entity_id:
+                chemical_select_entity = entity_id
+            elif entity_id.startswith("text.") and "custom_chemical" in entity_id:
+                custom_chemical_entity = entity_id
+            elif entity_id.startswith("select.") and "method_select" in entity_id:
+                method_select_entity = entity_id
+        
+        _LOGGER.warning(f"Found entities: Chemical={chemical_select_entity}, Custom={custom_chemical_entity}, Method={method_select_entity}")
+        
+        # Get current values
+        chemical_select = self._hass.states.get(chemical_select_entity) if chemical_select_entity else None
+        custom_chemical = self._hass.states.get(custom_chemical_entity) if custom_chemical_entity else None
+        method_select = self._hass.states.get(method_select_entity) if method_select_entity else None
+        
+        _LOGGER.warning(f"Entity states - Chemical: {chemical_select.state if chemical_select else 'NOT FOUND'}, Custom: {custom_chemical.state if custom_chemical else 'NOT FOUND'}, Method: {method_select.state if method_select else 'NOT FOUND'}")
+        
+        # Determine which chemical to use
+        selected_chemical = chemical_select.state if chemical_select else None
+        custom_chemical_value = custom_chemical.state if custom_chemical else ""
+        method = method_select.state if method_select else "Sprayer"
+        
+        _LOGGER.warning(f"Processed values - Selected: {selected_chemical}, Custom: {custom_chemical_value}, Method: {method}")
+        
+        # Use custom chemical if "Custom" is selected and custom field has value
+        if selected_chemical == "Custom" and custom_chemical_value.strip():
+            chemical_to_use = custom_chemical_value.strip()
+        elif selected_chemical and selected_chemical != "Custom":
+            chemical_to_use = selected_chemical
+        else:
+            # No valid chemical selected
+            _LOGGER.error("No chemical selected or custom chemical name provided")
+            return
+        
+        _LOGGER.warning(f"Final chemical to use: {chemical_to_use}")
+        
+        # Call the service with the selected values
+        service_data = {
+            "chemical_select": chemical_to_use if selected_chemical != "Custom" else None,
+            "custom_chemical": chemical_to_use if selected_chemical == "Custom" else None,
+            "method": method
+        }
+        
+        _LOGGER.warning(f"Calling service with data: {service_data}")
+        
         await self._hass.services.async_call(
             DOMAIN, "log_application",
-            {"chemical_select": "Fertilizer", "method": "Sprayer"},
+            service_data,
             blocking=True
         ) 
