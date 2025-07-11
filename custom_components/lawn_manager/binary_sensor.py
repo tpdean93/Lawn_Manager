@@ -57,8 +57,8 @@ class LawnDueSensor(BinarySensorEntity):
         """Return True if mowing is due or overdue."""
         if not self._last_mow:
             return False
-        days_since = (dt_util.now() - self._last_mow).days
-        return days_since >= self._mow_interval
+        due_date = self._last_mow + timedelta(days=self._mow_interval)
+        return dt_util.now().date() >= due_date.date()
 
     @property
     def extra_state_attributes(self):
