@@ -26,7 +26,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     await _register_services(hass)
 
     # Forward setup to platforms
-    await hass.config_entries.async_forward_entry_setups(entry, ["sensor", "binary_sensor"])
+    await hass.config_entries.async_forward_entry_setups(entry, ["sensor", "binary_sensor", "button"])
 
     return True
 
@@ -97,6 +97,12 @@ async def _register_services(hass: HomeAssistant):
         if entry:
             await hass.config_entries.async_reload(entry.entry_id)
 
+    async def handle_remove_entry(call: ServiceCall):
+        """Handle removal of a config entry by purging stored data."""
+        store = Store(hass, STORAGE_VERSION, STORAGE_KEY)
+        await store.async_remove()
+        _LOGGER.info("✅ Lawn Manager data purged.")
+
     # Register services if not already registered
     if not hass.services.has_service(DOMAIN, "log_mow"):
         hass.services.async_register(DOMAIN, "log_mow", handle_log_mow)
@@ -106,3 +112,12 @@ async def _register_services(hass: HomeAssistant):
 
     if not hass.services.has_service(DOMAIN, "reload"):
         hass.services.async_register(DOMAIN, "reload", handle_reload)
+
+    if not hass.services.has_service(DOMAIN, "remove_entry"):
+        hass.services.async_register(DOMAIN, "remove_entry", handle_remove_entry)
+
+
+async def async_remove_entry(hass, entry):
+    """Handle removal of a config entry by purging stored data."""
+    store = Store(hass, STORAGE_VERSION, STORAGE_KEY)
+    await store.async_remove()
