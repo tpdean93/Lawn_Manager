@@ -3,6 +3,7 @@ from homeassistant.components.binary_sensor import BinarySensorEntity
 from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 import logging
+from homeassistant.helpers.dispatcher import async_dispatcher_connect
 
 from .const import DOMAIN, DEFAULT_MOW_INTERVAL
 
@@ -25,6 +26,21 @@ class LawnDueSensor(BinarySensorEntity):
         self._mow_interval = mow_interval
         self._last_mow = None
         self._store = Store(hass, STORAGE_VERSION, STORAGE_KEY)
+        self._unsub_dispatcher = None
+
+    async def async_added_to_hass(self):
+        self._unsub_dispatcher = async_dispatcher_connect(
+            self.hass, "lawn_manager_update", self._handle_update_signal
+        )
+
+    async def async_will_remove_from_hass(self):
+        if self._unsub_dispatcher:
+            self._unsub_dispatcher()
+            self._unsub_dispatcher = None
+
+    async def _handle_update_signal(self):
+        await self.async_update()
+        self.async_write_ha_state()
 
     async def async_update(self):
         """Reload data from storage."""
