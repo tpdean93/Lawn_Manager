@@ -1,1 +1,39 @@
-# Placeholder for services
+log_mow:
+  name: Log Mowing
+  description: Log the most recent mowing event for your lawn.
+
+log_application:
+  name: Log Chemical Application
+  description: Logs a chemical application to track usage and scheduling.
+  fields:
+    chemical_select:
+      name: Chemical Name (Predefined)
+      description: Select from common chemicals. If your chemical isn't listed, enter it below.
+      required: true
+      selector:
+        select:
+          options:
+            - "Fertilizer 10-10-10"
+            - "Weed Preventer"
+            - "Grub Killer"
+            - "Iron Supplement"
+            - "Urea"
+            - "T-Nex / PGR"
+            - "Disease Preventer"
+            - "Soil Conditioner"
+            - "Insecticide"
+    custom_chemical:
+      name: Custom Chemical Name
+      description: Optional custom chemical name if it's not in the list above.
+      required: false
+      selector:
+        text:
+    method:
+      name: Application Method
+      description: How was the chemical applied?
+      required: true
+      selector:
+        select:
+          options:
+            - "Sprayer"
+            - "Spreader"
