@@ -1,9 +1,11 @@
 {
   "domain": "lawn_manager",
   "name": "Lawn Manager",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "documentation": "https://github.com/tpdean93/Lawn_Manager",
-  "dependencies": [],
   "codeowners": ["@tpdean93"],
-  "requirements": []
+  "requirements": [],
+  "config_flow": true,
+  "dependencies": [],
+  "iot_class": "local_polling"
 }
