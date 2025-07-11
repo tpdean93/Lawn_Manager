@@ -17,9 +17,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
     _LOGGER.warning(f"Chemical options: {chemical_options}")
     _LOGGER.warning(f"Method options: {method_options}")
     
+    # Rate override options
+    rate_options = ["Default", "Light (50%)", "Heavy (150%)", "Extra Heavy (200%)", "Custom"]
+    
     entities = [
         LawnChemicalSelect(hass, entry, chemical_options),
         LawnMethodSelect(hass, entry, method_options),
+        LawnRateOverrideSelect(hass, entry, rate_options),
     ]
     
     _LOGGER.warning(f"Adding {len(entities)} select entities")
@@ -35,6 +39,29 @@ class LawnChemicalSelect(SelectEntity):
         self._attr_options = options
         self._attr_current_option = options[0]  # Default to first option
         self._attr_icon = "mdi:flask-outline"
+
+    @property
+    def device_info(self):
+        return {
+            "identifiers": {(DOMAIN, self._entry.entry_id)},
+            "name": "Lawn Manager",
+            "manufacturer": "Custom Integration",
+        }
+
+    async def async_select_option(self, option: str) -> None:
+        """Select new option."""
+        self._attr_current_option = option
+        self.async_write_ha_state()
+
+class LawnRateOverrideSelect(SelectEntity):
+    def __init__(self, hass, entry, options):
+        self._hass = hass
+        self._entry = entry
+        self._attr_name = "Application Rate"
+        self._attr_unique_id = f"{entry.entry_id}_rate_override"
+        self._attr_options = options
+        self._attr_current_option = options[0]  # Default to "Default"
+        self._attr_icon = "mdi:gauge"
 
     @property
     def device_info(self):
