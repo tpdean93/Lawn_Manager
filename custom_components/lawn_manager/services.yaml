@@ -1,6 +1,13 @@
 log_mow:
   name: Log Mowing
   description: Log the most recent mowing event for your lawn.
+  fields:
+    application_date:
+      name: Mow Date
+      description: "Date when the lawn was mowed (defaults to today if not specified)"
+      required: false
+      selector:
+        date:
 
 log_application:
   name: Log Chemical Application
@@ -38,7 +45,34 @@ log_application:
           options:
             - "Sprayer"
             - "Spreader"
+            - "Hand Application"
             - "Other"
+    rate_override:
+      name: Application Rate
+      description: Choose application rate (Default uses recommended rate from chemical database)
+      required: false
+      default: "Default"
+      selector:
+        select:
+          options:
+            - "Default"
+            - "Light (50%)"
+            - "Heavy (150%)"
+            - "Extra Heavy (200%)"
+            - "Custom"
+    custom_rate:
+      name: Custom Rate Multiplier
+      description: "Multiplier for custom rate (e.g., 1.0 = default, 2.0 = double rate, 0.5 = half rate)"
+      required: false
+      default: "1.0"
+      selector:
+        text:
+    application_date:
+      name: Application Date
+      description: "Date when the chemical was applied (defaults to today if not specified)"
+      required: false
+      selector:
+        date:
 
 reload:
   name: Reload Lawn Manager
