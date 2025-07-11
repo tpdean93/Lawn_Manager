@@ -1,11 +1,15 @@
 {
-  "domain": "lawn_manager",
-  "name": "Lawn Manager",
-  "version": "0.1.1",
-  "documentation": "https://github.com/tpdean93/Lawn_Manager",
-  "codeowners": ["@tpdean93"],
-  "requirements": [],
-  "config_flow": true,
-  "dependencies": [],
-  "iot_class": "local_polling"
-}
+    "domain": "lawn_manager",
+    "name": "Lawn Manager",
+    "version": "1.0.0",
+    "documentation": "https://github.com/yourusername/lawn_manager",
+    "codeowners": [],
+    "requirements": [],
+    "config_flow": true,
+    "dependencies": [],
+    "iot_class": "local_push",
+    "platforms": ["sensor", "binary_sensor", "button"],
+    "logo": "logo.png",
+    "icon": "icon.png"
+  }
+  
