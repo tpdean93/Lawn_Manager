@@ -33,9 +33,10 @@ class LawnManagerSensorManager:
         location = config.get("location", "Unknown")
         mow_interval = config.get("mow_interval", DEFAULT_MOW_INTERVAL)
 
-        # Add mow sensor
+        # Add core mow tracking sensors (always created)
         self.mow_sensor = LawnMowSensor(self.entry.entry_id, yard_zone, location, mow_interval, store)
-        entities = [self.mow_sensor]
+        self.mow_due_sensor = LawnMowDueSensor(self.entry.entry_id, yard_zone, location, mow_interval, store)
+        entities = [self.mow_sensor, self.mow_due_sensor]
 
         # Add chemical sensors
         for chem_name, chem_data in data.get("applications", {}).items():
@@ -84,7 +85,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
 class LawnMowSensor(SensorEntity):
     def __init__(self, entry_id, yard_zone, location, mow_interval, store):
         self._entry_id = entry_id
-        self._name = f"{yard_zone} Mow Interval"
+        self._yard_zone = yard_zone  # Store yard zone for name generation
         self._location = location
         self._mow_interval = mow_interval
         self._last_mow = None
@@ -116,13 +117,21 @@ class LawnMowSensor(SensorEntity):
 
     @property
     def name(self):
-        return self._name
+        return f"{self._yard_zone} Last Mow Date"
 
     @property
     def state(self):
         if self._last_mow:
-            return (dt_util.now() - self._last_mow).days
+            return self._last_mow.strftime("%Y-%m-%d")
+        return "Never"
+
+    @property
+    def unit_of_measurement(self):
         return None
+
+    @property
+    def icon(self):
+        return "mdi:calendar-check"
 
     @property
     def extra_state_attributes(self):
@@ -137,7 +146,7 @@ class LawnMowSensor(SensorEntity):
 
     @property
     def unique_id(self):
-        return f"lawn_manager_{self._entry_id}_{self._name.lower().replace(' ', '_')}_sensor"
+        return f"lawn_manager_{self._entry_id}_{self._yard_zone.lower().replace(' ', '_')}_last_mow"
 
     @property
     def device_info(self):
@@ -149,7 +158,87 @@ class LawnMowSensor(SensorEntity):
 
     @property
     def entity_category(self):
-        return EntityCategory.DIAGNOSTIC
+        return None  # Remove diagnostic category to make it a regular sensor
+
+
+class LawnMowDueSensor(SensorEntity):
+    def __init__(self, entry_id, yard_zone, location, mow_interval, store):
+        self._entry_id = entry_id
+        self._yard_zone = yard_zone
+        self._location = location
+        self._mow_interval = mow_interval
+        self._last_mow = None
+        self._store = store
+        self._unsub_dispatcher = None
+
+    async def async_added_to_hass(self):
+        self._unsub_dispatcher = async_dispatcher_connect(
+            self.hass, "lawn_manager_update", self._handle_update_signal
+        )
+
+    async def async_will_remove_from_hass(self):
+        if self._unsub_dispatcher:
+            self._unsub_dispatcher()
+            self._unsub_dispatcher = None
+
+    async def _handle_update_signal(self):
+        await self.async_update()
+        self.async_write_ha_state()
+
+    async def async_update(self):
+        data = await self._store.async_load() or {}
+        try:
+            self._last_mow = dt_util.as_local(
+                datetime.strptime(data.get("last_mow"), "%Y-%m-%d")
+            )
+        except Exception:
+            self._last_mow = None
+
+    @property
+    def name(self):
+        return f"{self._yard_zone} Mow Due Date"
+
+    @property
+    def state(self):
+        if self._last_mow:
+            due_date = self._last_mow + timedelta(days=self._mow_interval)
+            return due_date.strftime("%Y-%m-%d")
+        return "Not Set"
+
+    @property
+    def icon(self):
+        return "mdi:calendar-clock"
+
+    @property
+    def extra_state_attributes(self):
+        if not self._last_mow:
+            return {
+                "mow_interval_days": self._mow_interval,
+                "last_mow": "Never",
+                "days_until_due": "Unknown"
+            }
+        
+        due_date = self._last_mow + timedelta(days=self._mow_interval)
+        days_until_due = (due_date - dt_util.now()).days
+        
+        return {
+            "mow_interval_days": self._mow_interval,
+            "last_mow": self._last_mow.strftime("%Y-%m-%d"),
+            "days_until_due": days_until_due,
+            "overdue": days_until_due < 0
+        }
+
+    @property
+    def unique_id(self):
+        return f"lawn_manager_{self._entry_id}_{self._yard_zone.lower().replace(' ', '_')}_mow_due"
+
+    @property
+    def device_info(self):
+        return {
+            "identifiers": {(DOMAIN, self._entry_id)},
+            "name": "Lawn Manager",
+            "manufacturer": "Custom Integration",
+        }
 
 
 class ChemicalApplicationSensor(SensorEntity):
@@ -163,6 +252,14 @@ class ChemicalApplicationSensor(SensorEntity):
         self._method = chem_data.get("method", "Unknown")
         self._state = None
         self._unsub_dispatcher = None
+        
+        # Calculate initial state
+        if self._last_applied:
+            try:
+                last_dt = dt_util.as_local(datetime.strptime(self._last_applied, "%Y-%m-%d"))
+                self._state = (dt_util.now() - last_dt).days
+            except Exception:
+                self._state = None
 
     async def async_added_to_hass(self):
         self._unsub_dispatcher = async_dispatcher_connect(
@@ -192,11 +289,22 @@ class ChemicalApplicationSensor(SensorEntity):
 
     @property
     def name(self):
-        return f"{self._chemical_name} Application"
+        if self._state is None:
+            return f"{self._chemical_name} Application"
+        elif self._state == 0:
+            return f"{self._chemical_name} (Applied Today)"
+        elif self._state == 1:
+            return f"{self._chemical_name} (Applied Yesterday)"
+        else:
+            return f"{self._chemical_name} ({self._state} Days Ago)"
 
     @property
     def state(self):
         return self._state
+
+    @property
+    def unit_of_measurement(self):
+        return "days"
 
     @property
     def extra_state_attributes(self):
