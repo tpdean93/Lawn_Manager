@@ -247,8 +247,13 @@ class ChemicalApplicationSensor(SensorEntity):
         self._chemical_name = chemical_name
         self._last_applied = chem_data.get("last_applied")
         self._interval_days = chem_data.get("interval_days", 30)
-        self._amount_lb = chem_data.get("amount_lb_per_1000sqft", 1.0)
-        self._amount_oz = chem_data.get("amount_oz_per_1000sqft", 16.0)
+        # Support both old and new format for backward compatibility
+        self._default_amount_lb = chem_data.get("default_amount_lb_per_1000sqft", chem_data.get("amount_lb_per_1000sqft", 1.0))
+        self._default_amount_oz = chem_data.get("default_amount_oz_per_1000sqft", chem_data.get("amount_oz_per_1000sqft", 16.0))
+        self._applied_amount_lb = chem_data.get("applied_amount_lb_per_1000sqft", self._default_amount_lb)
+        self._applied_amount_oz = chem_data.get("applied_amount_oz_per_1000sqft", self._default_amount_oz)
+        self._rate_multiplier = chem_data.get("rate_multiplier", 1.0)
+        self._rate_description = chem_data.get("rate_description", "Default")
         self._method = chem_data.get("method", "Unknown")
         self._state = None
         self._unsub_dispatcher = None
@@ -276,13 +281,37 @@ class ChemicalApplicationSensor(SensorEntity):
         self.async_write_ha_state()
 
     async def async_update(self):
+        # Reload data from storage to get latest chemical data
+        from homeassistant.helpers.storage import Store
+        from .const import STORAGE_VERSION, STORAGE_KEY
+        
+        store = Store(self.hass, STORAGE_VERSION, STORAGE_KEY)
+        data = await store.async_load() or {}
+        
+        # Update chemical data from storage
+        chem_data = data.get("applications", {}).get(self._chemical_name, {})
+        if chem_data:
+            self._last_applied = chem_data.get("last_applied")
+            self._interval_days = chem_data.get("interval_days", 30)
+            self._default_amount_lb = chem_data.get("default_amount_lb_per_1000sqft", chem_data.get("amount_lb_per_1000sqft", 1.0))
+            self._default_amount_oz = chem_data.get("default_amount_oz_per_1000sqft", chem_data.get("amount_oz_per_1000sqft", 16.0))
+            self._applied_amount_lb = chem_data.get("applied_amount_lb_per_1000sqft", self._default_amount_lb)
+            self._applied_amount_oz = chem_data.get("applied_amount_oz_per_1000sqft", self._default_amount_oz)
+            self._rate_multiplier = chem_data.get("rate_multiplier", 1.0)
+            self._rate_description = chem_data.get("rate_description", "Default")
+            self._method = chem_data.get("method", "Unknown")
+        
+        # Calculate state (days since application)
         if not self._last_applied:
             self._state = None
             return
 
         try:
-            last_dt = dt_util.as_local(datetime.strptime(self._last_applied, "%Y-%m-%d"))
-            self._state = (dt_util.now() - last_dt).days
+            if self._last_applied:
+                last_dt = dt_util.as_local(datetime.strptime(self._last_applied, "%Y-%m-%d"))
+                self._state = (dt_util.now() - last_dt).days
+            else:
+                self._state = None
         except Exception as e:
             _LOGGER.error("Error parsing last_applied for %s: %s", self._chemical_name, e)
             self._state = None
@@ -311,16 +340,23 @@ class ChemicalApplicationSensor(SensorEntity):
         if not self._last_applied:
             return {}
         try:
-            last_dt = datetime.strptime(self._last_applied, "%Y-%m-%d")
-            next_due = last_dt + timedelta(days=self._interval_days)
-            return {
-                "last_applied": self._last_applied,
-                "next_due": next_due.strftime("%Y-%m-%d"),
-                "interval_days": self._interval_days,
-                "amount_lb_per_1000sqft": self._amount_lb,
-                "amount_oz_per_1000sqft": self._amount_oz,
-                "method": self._method
-            }
+            if self._last_applied:
+                last_dt = datetime.strptime(self._last_applied, "%Y-%m-%d")
+                next_due = last_dt + timedelta(days=self._interval_days)
+                return {
+                    "last_applied": self._last_applied,
+                    "next_due": next_due.strftime("%Y-%m-%d"),
+                    "interval_days": self._interval_days,
+                    "default_amount_lb_per_1000sqft": self._default_amount_lb,
+                    "default_amount_oz_per_1000sqft": self._default_amount_oz,
+                    "applied_amount_lb_per_1000sqft": self._applied_amount_lb,
+                    "applied_amount_oz_per_1000sqft": self._applied_amount_oz,
+                    "rate_multiplier": self._rate_multiplier,
+                    "rate_description": self._rate_description,
+                    "method": self._method
+                }
+            else:
+                return {}
         except Exception as e:
             _LOGGER.error("Error generating attributes for %s: %s", self._chemical_name, e)
             return {}
