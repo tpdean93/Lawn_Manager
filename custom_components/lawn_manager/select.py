@@ -3,7 +3,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.config_entries import ConfigEntry
 import logging
 
-from .const import DOMAIN, CHEMICALS
+from .const import DOMAIN, CHEMICALS, GRASS_TYPE_LIST
 
 _LOGGER = logging.getLogger(__name__)
 
