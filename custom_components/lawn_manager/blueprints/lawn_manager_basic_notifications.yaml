@@ -1,0 +1,102 @@
+blueprint:
+  name: Lawn Manager Basic Notifications
+  description: >
+    Simple notifications for lawn care - just the essentials!
+    Get notified when mowing is overdue and when weather is good for lawn activities.
+  domain: automation
+  input:
+    # Required Entities
+    lawn_mow_due_sensor:
+      name: Mow Due Sensor
+      description: Your lawn mow due sensor
+      selector:
+        entity:
+          domain: sensor
+          integration: lawn_manager
+    
+    lawn_weather_sensor:
+      name: Weather Sensor
+      description: Your lawn weather conditions sensor
+      selector:
+        entity:
+          domain: sensor
+          integration: lawn_manager
+    
+    # Notification Device
+    notification_device:
+      name: Notification Device
+      description: Device to send notifications to
+      selector:
+        device:
+          integration: mobile_app
+    
+    # Simple Settings
+    notification_time:
+      name: Daily Check Time
+      description: What time to check for notifications
+      default: "08:00:00"
+      selector:
+        time:
+    
+    overdue_days:
+      name: Overdue Alert (Days)
+      description: Alert when mowing is this many days overdue
+      default: 2
+      selector:
+        number:
+          min: 1
+          max: 7
+          unit_of_measurement: days
+
+trigger:
+  # Daily check
+  - platform: time
+    at: !input notification_time
+
+condition: []
+
+action:
+  - choose:
+      # Mowing Overdue Alert
+      - conditions:
+          - condition: template
+            value_template: >
+              {{ states(input_lawn_mow_due_sensor) | int >= input_overdue_days }}
+        sequence:
+          - service: notify.mobile_app_{{ device_attr(input_notification_device, 'name') | lower | replace(' ', '_') }}
+            data:
+              title: "🚨 Mowing Overdue!"
+              message: >
+                Your lawn is {{ states(input_lawn_mow_due_sensor) }} days overdue for mowing.
+                {% if state_attr(input_lawn_weather_sensor, 'mowing_suitable') == true %}
+                Weather looks good for mowing today!
+                {% else %}
+                {{ state_attr(input_lawn_weather_sensor, 'mowing_recommendation') }}
+                {% endif %}
+              data:
+                priority: high
+                tag: lawn_overdue
+      
+      # Good Weather Opportunity
+      - conditions:
+          - condition: template
+            value_template: >
+              {{ states(input_lawn_mow_due_sensor) | int >= -1 and states(input_lawn_mow_due_sensor) | int < input_overdue_days }}
+          - condition: template
+            value_template: >
+              {{ state_attr(input_lawn_weather_sensor, 'mowing_suitable') == true }}
+        sequence:
+          - service: notify.mobile_app_{{ device_attr(input_notification_device, 'name') | lower | replace(' ', '_') }}
+            data:
+              title: "🌱 Good Day for Lawn Care!"
+              message: >
+                {% if states(input_lawn_mow_due_sensor) | int >= 0 %}
+                Mowing is due ({{ states(input_lawn_mow_due_sensor) }} days).
+                {% else %}
+                Mowing is due soon.
+                {% endif %}
+                Weather conditions are perfect for lawn activities!
+              data:
+                tag: lawn_opportunity
+
+mode: single 
