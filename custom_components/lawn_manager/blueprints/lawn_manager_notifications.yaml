@@ -1,0 +1,282 @@
+blueprint:
+  name: Lawn Manager Smart Notifications
+  description: >
+    Get intelligent notifications for your lawn care based on weather conditions,
+    overdue tasks, and optimal timing recommendations. Completely customizable!
+  domain: automation
+  input:
+    # Lawn Manager Entities
+    lawn_mow_due_sensor:
+      name: Mow Due Sensor
+      description: Your lawn mow due sensor
+      selector:
+        entity:
+          domain: sensor
+          integration: lawn_manager
+    
+    lawn_weather_sensor:
+      name: Weather Sensor
+      description: Your lawn weather conditions sensor
+      selector:
+        entity:
+          domain: sensor
+          integration: lawn_manager
+    
+    lawn_seasonal_sensor:
+      name: Seasonal Intelligence Sensor
+      description: Your lawn seasonal intelligence sensor
+      selector:
+        entity:
+          domain: sensor
+          integration: lawn_manager
+    
+    # Notification Settings
+    notification_device:
+      name: Notification Device
+      description: Device to send notifications to
+      selector:
+        device:
+          integration: mobile_app
+    
+    # Timing Settings
+    notification_time:
+      name: Notification Time
+      description: What time to send daily notifications
+      default: "08:00:00"
+      selector:
+        time:
+    
+    # Notification Types
+    enable_mowing_notifications:
+      name: Enable Mowing Notifications
+      description: Get notified when mowing is due or overdue
+      default: true
+      selector:
+        boolean:
+    
+    enable_weather_notifications:
+      name: Enable Weather-Based Notifications
+      description: Get notified about good/bad weather for lawn activities
+      default: true
+      selector:
+        boolean:
+    
+    enable_chemical_notifications:
+      name: Enable Chemical Application Notifications
+      description: Get notified about chemical application opportunities
+      default: true
+      selector:
+        boolean:
+    
+    enable_seasonal_notifications:
+      name: Enable Seasonal Task Notifications
+      description: Get notified about seasonal lawn care tasks
+      default: true
+      selector:
+        boolean:
+    
+    # Advanced Settings
+    overdue_threshold:
+      name: Overdue Threshold (Days)
+      description: How many days overdue before urgent notifications
+      default: 3
+      selector:
+        number:
+          min: 1
+          max: 14
+          unit_of_measurement: days
+    
+    weather_opportunity_threshold:
+      name: Weather Opportunity Threshold (Days)
+      description: How many days of good weather before opportunity notifications
+      default: 2
+      selector:
+        number:
+          min: 1
+          max: 7
+          unit_of_measurement: days
+
+trigger:
+  # Daily notification check
+  - platform: time
+    at: !input notification_time
+    id: daily_check
+  
+  # Immediate notifications for urgent situations
+  - platform: state
+    entity_id: !input lawn_mow_due_sensor
+    id: mow_status_change
+  
+  - platform: state
+    entity_id: !input lawn_weather_sensor
+    id: weather_change
+
+condition: []
+
+action:
+  - choose:
+      # Daily Notification Check
+      - conditions:
+          - condition: trigger
+            id: daily_check
+        sequence:
+          - choose:
+              # Mowing Notifications
+              - conditions:
+                  - condition: template
+                    value_template: !input enable_mowing_notifications
+                  - condition: template
+                    value_template: >
+                      {{ states(input_lawn_mow_due_sensor) | int >= 0 }}
+                sequence:
+                  - choose:
+                      # Overdue Mowing - Urgent
+                      - conditions:
+                          - condition: template
+                            value_template: >
+                              {{ states(input_lawn_mow_due_sensor) | int >= input_overdue_threshold }}
+                          - condition: template
+                            value_template: >
+                              {{ state_attr(input_lawn_weather_sensor, 'mowing_suitable') == true }}
+                        sequence:
+                          - service: notify.mobile_app_{{ device_attr(input_notification_device, 'name') | lower | replace(' ', '_') }}
+                            data:
+                              title: "🚨 Lawn Mowing Overdue!"
+                              message: >
+                                Your lawn is {{ states(input_lawn_mow_due_sensor) }} days overdue for mowing.
+                                {{ state_attr(input_lawn_weather_sensor, 'mowing_recommendation') }}
+                              data:
+                                priority: high
+                                tag: lawn_mowing_overdue
+                      
+                      # Due Soon - Good Weather
+                      - conditions:
+                          - condition: template
+                            value_template: >
+                              {{ states(input_lawn_mow_due_sensor) | int >= -1 and states(input_lawn_mow_due_sensor) | int < input_overdue_threshold }}
+                          - condition: template
+                            value_template: >
+                              {{ state_attr(input_lawn_weather_sensor, 'mowing_suitable') == true }}
+                        sequence:
+                          - service: notify.mobile_app_{{ device_attr(input_notification_device, 'name') | lower | replace(' ', '_') }}
+                            data:
+                              title: "🌱 Good Day to Mow!"
+                              message: >
+                                {% if states(input_lawn_mow_due_sensor) | int >= 0 %}
+                                  Mowing is due ({{ states(input_lawn_mow_due_sensor) }} days).
+                                {% else %}
+                                  Mowing is due soon.
+                                {% endif %}
+                                {{ state_attr(input_lawn_weather_sensor, 'mowing_recommendation') }}
+                              data:
+                                tag: lawn_mowing_due
+              
+              # Weather-Based Chemical Notifications
+              - conditions:
+                  - condition: template
+                    value_template: !input enable_weather_notifications
+                  - condition: template
+                    value_template: !input enable_chemical_notifications
+                sequence:
+                  - choose:
+                      # Good Day for Fertilizer
+                      - conditions:
+                          - condition: template
+                            value_template: >
+                              {{ state_attr(input_lawn_weather_sensor, 'fertilizer_suitable') == true }}
+                          - condition: template
+                            value_template: >
+                              {{ 'no rain' in state_attr(input_lawn_weather_sensor, 'fertilizer_recommendation') | lower }}
+                        sequence:
+                          - service: notify.mobile_app_{{ device_attr(input_notification_device, 'name') | lower | replace(' ', '_') }}
+                            data:
+                              title: "🌿 Good Day to Fertilize!"
+                              message: >
+                                {{ state_attr(input_lawn_weather_sensor, 'fertilizer_recommendation') }}
+                              data:
+                                tag: lawn_fertilizer_opportunity
+                      
+                      # Good Day for Herbicide
+                      - conditions:
+                          - condition: template
+                            value_template: >
+                              {{ state_attr(input_lawn_weather_sensor, 'herbicide_suitable') == true }}
+                          - condition: template
+                            value_template: >
+                              {{ 'no rain' in state_attr(input_lawn_weather_sensor, 'herbicide_recommendation') | lower }}
+                        sequence:
+                          - service: notify.mobile_app_{{ device_attr(input_notification_device, 'name') | lower | replace(' ', '_') }}
+                            data:
+                              title: "🚫 Good Day for Herbicide!"
+                              message: >
+                                {{ state_attr(input_lawn_weather_sensor, 'herbicide_recommendation') }}
+                              data:
+                                tag: lawn_herbicide_opportunity
+              
+              # Seasonal Task Notifications
+              - conditions:
+                  - condition: template
+                    value_template: !input enable_seasonal_notifications
+                  - condition: template
+                    value_template: >
+                      {{ state_attr(input_lawn_seasonal_sensor, 'high_priority_tasks') | length > 0 or 
+                         state_attr(input_lawn_seasonal_sensor, 'high_priority_chemicals') | length > 0 }}
+                sequence:
+                  - service: notify.mobile_app_{{ device_attr(input_notification_device, 'name') | lower | replace(' ', '_') }}
+                    data:
+                      title: "📅 Seasonal Lawn Care Reminder"
+                      message: >
+                        {% set high_tasks = state_attr(input_lawn_seasonal_sensor, 'high_priority_tasks') %}
+                        {% set high_chems = state_attr(input_lawn_seasonal_sensor, 'high_priority_chemicals') %}
+                        {% if high_tasks | length > 0 %}
+                          High Priority Tasks: {{ high_tasks | join(', ') }}
+                        {% endif %}
+                        {% if high_chems | length > 0 %}
+                          {% if high_tasks | length > 0 %}. {% endif %}
+                          High Priority Chemicals: {{ high_chems | join(', ') }}
+                        {% endif %}
+                      data:
+                        tag: lawn_seasonal_tasks
+      
+      # Immediate Weather Alert
+      - conditions:
+          - condition: trigger
+            id: weather_change
+          - condition: template
+            value_template: !input enable_weather_notifications
+        sequence:
+          - choose:
+              # Rain Warning for Recent Chemical Application
+              - conditions:
+                  - condition: template
+                    value_template: >
+                      {{ 'rain' in states(input_lawn_weather_sensor) | lower }}
+                  - condition: template
+                    value_template: >
+                      {{ 'recently applied' in state_attr(input_lawn_weather_sensor, 'general_chemical_recommendation') | lower }}
+                sequence:
+                  - service: notify.mobile_app_{{ device_attr(input_notification_device, 'name') | lower | replace(' ', '_') }}
+                    data:
+                      title: "⛈️ Rain Alert - Chemical Application"
+                      message: >
+                        {{ state_attr(input_lawn_weather_sensor, 'general_chemical_recommendation') }}
+                      data:
+                        priority: high
+                        tag: lawn_rain_alert
+              
+              # Temperature Warning
+              - conditions:
+                  - condition: template
+                    value_template: >
+                      {{ state_attr(input_lawn_seasonal_sensor, 'temperature_warnings') | length > 0 }}
+                sequence:
+                  - service: notify.mobile_app_{{ device_attr(input_notification_device, 'name') | lower | replace(' ', '_') }}
+                    data:
+                      title: "🌡️ Temperature Alert"
+                      message: >
+                        {{ state_attr(input_lawn_seasonal_sensor, 'temperature_warnings') | join('. ') }}
+                      data:
+                        tag: lawn_temperature_alert
+
+mode: single
+max_exceeded: silent 
