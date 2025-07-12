@@ -11,14 +11,19 @@ DEFAULT_MOW_INTERVAL = 7
 STORAGE_KEY = "lawn_manager_data"
 STORAGE_VERSION = 1
 
-GRASS_TYPES = [
-    "Bermuda",
-    "Zoysia",
-    "St. Augustine",
-    "Fescue",
-    "Kentucky Bluegrass",
-    "Ryegrass",
-]
+GRASS_TYPES = {
+    "Bermuda": {"season": "warm", "peak_months": [5, 6, 7, 8, 9], "dormant_months": [11, 12, 1, 2]},
+    "Zoysia": {"season": "warm", "peak_months": [5, 6, 7, 8, 9], "dormant_months": [11, 12, 1, 2]},
+    "St. Augustine": {"season": "warm", "peak_months": [4, 5, 6, 7, 8, 9], "dormant_months": [12, 1, 2]},
+    "Centipede": {"season": "warm", "peak_months": [5, 6, 7, 8, 9], "dormant_months": [11, 12, 1, 2]},
+    "Fescue": {"season": "cool", "peak_months": [3, 4, 5, 9, 10, 11], "dormant_months": [7, 8]},
+    "Kentucky Bluegrass": {"season": "cool", "peak_months": [3, 4, 5, 9, 10, 11], "dormant_months": [7, 8]},
+    "Ryegrass": {"season": "cool", "peak_months": [3, 4, 5, 9, 10, 11], "dormant_months": [7, 8]},
+    "Fine Fescue": {"season": "cool", "peak_months": [3, 4, 5, 9, 10, 11], "dormant_months": [7, 8]},
+}
+
+# For backward compatibility
+GRASS_TYPE_LIST = list(GRASS_TYPES.keys())
 
 CHEMICALS = {
     "Fertilizer 10-10-10": {
