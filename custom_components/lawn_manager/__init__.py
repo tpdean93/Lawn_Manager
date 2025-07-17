@@ -138,9 +138,52 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     await async_register_services(hass)
 
     # Forward setup to platforms
-    await hass.config_entries.async_forward_entry_setups(entry, ["sensor", "binary_sensor", "button", "select", "text", "date"])
+    await hass.config_entries.async_forward_entry_setups(entry, ["select", "date", "text", "sensor", "binary_sensor", "button"])
 
     return True
+
+
+async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Unload a config entry."""
+    _LOGGER.info("Unloading Lawn Manager entry: %s", entry.title)
+    
+    # Restore original services.yaml
+    await _restore_original_services_yaml(hass)
+    
+    # Unload platforms
+    unload_ok = await hass.config_entries.async_unload_platforms(
+        entry, ["select", "date", "text", "sensor", "binary_sensor", "button"]
+    )
+    
+    # Optional: Clear entity registry entries to force recreation in proper order
+    # This helps fix entity ordering issues
+    await _cleanup_entity_registry_for_entry(hass, entry)
+    
+    return unload_ok
+
+
+async def _cleanup_entity_registry_for_entry(hass: HomeAssistant, entry: ConfigEntry):
+    """Remove all entities for this config entry from entity registry to force proper ordering on reload."""
+    try:
+        from homeassistant.helpers import entity_registry as er
+        
+        entity_registry = er.async_get(hass)
+        
+        # Find all entities for this integration entry
+        entities_to_remove = []
+        for entity_id, entity_entry in entity_registry.entities.items():
+            if entity_entry.config_entry_id == entry.entry_id:
+                entities_to_remove.append(entity_id)
+        
+        # Remove entities from registry (they will be recreated on next load)
+        for entity_id in entities_to_remove:
+            _LOGGER.info("Removing entity from registry for reordering: %s", entity_id)
+            entity_registry.async_remove(entity_id)
+            
+        _LOGGER.info("Cleaned up %d entities from registry for proper ordering", len(entities_to_remove))
+        
+    except Exception as e:
+        _LOGGER.warning("Could not cleanup entity registry: %s", e)
 
 
 async def _register_services(hass: HomeAssistant):
@@ -338,9 +381,8 @@ async def async_remove_entry(hass, entry):
 
 
 async def _restore_original_services_yaml(hass: HomeAssistant):
-    """Restore services.yaml to original state by removing dynamic modifications."""
+    """Restore original services.yaml without user customizations."""
     import os
-    import yaml
     
     # Path to services.yaml
     services_yaml_path = os.path.join(os.path.dirname(__file__), "services.yaml")
@@ -349,38 +391,73 @@ async def _restore_original_services_yaml(hass: HomeAssistant):
         """Restore services file synchronously in executor."""
         try:
             # Read current services.yaml
-            with open(services_yaml_path, 'r', encoding='utf-8') as file:
-                services = yaml.safe_load(file)
+            with open(services_yaml_path, 'r', encoding='utf-8') as f:
+                content = f.read()
             
-            # Restore calculate_application_rate to original text field format
-            if 'calculate_application_rate' in services:
-                services['calculate_application_rate']['fields']['equipment_name'] = {
-                    "name": "Equipment Name",
-                    "description": "Enter the exact equipment name from list_calculation_options (e.g., 'Ryobi 4 Gallon Sprayer')",
-                    "required": True,
-                    "selector": {
-                        "text": None
-                    }
-                }
-                services['calculate_application_rate']['fields']['zone'] = {
-                    "name": "Zone Name", 
-                    "description": "Enter the exact zone name from list_calculation_options (e.g., 'Front Yard')",
-                    "required": True,
-                    "selector": {
-                        "text": None
-                    }
-                }
-            
-            # Write back the restored services.yaml
-            with open(services_yaml_path, 'w', encoding='utf-8') as file:
-                yaml.dump(services, file, default_flow_style=False, sort_keys=False, allow_unicode=True)
-            
-            _LOGGER.info("✅ services.yaml restored to original text field format")
-            return True
-            
+            # Only restore if it contains user customizations (dynamic equipment/zones)
+            if 'select:' in content and ('equipment_names' in content or 'zone_names' in content):
+                # This is the original static content (equipment and zone as text fields)
+                original_content = """\
+list_calculation_options:
+  name: List Calculation Options
+  description: Get available equipment and zone options for calculations
+  response:
+    supported: true
+
+calculate_application_rate:
+  name: Calculate Application Rate
+  description: Calculate chemical application rate with detailed mixing instructions
+  fields:
+    chemical_name:
+      name: Chemical Name
+      description: Name of the chemical to apply
+      required: true
+      selector:
+        text:
+    equipment_name:
+      name: Equipment Name  
+      description: Name of equipment to use (optional, will auto-determine method)
+      required: false
+      selector:
+        text:
+    zone_name:
+      name: Zone Name
+      description: Name of the lawn zone
+      required: true
+      selector:
+        text:
+    rate_override:
+      name: Rate Override
+      description: Override application rate
+      required: false
+      default: "Default"
+      selector:
+        select:
+          options:
+            - "Default"
+            - "Light (50%)"
+            - "Heavy (150%)"
+            - "Extra Heavy (200%)"
+            - "Custom"
+    custom_rate:
+      name: Custom Rate Multiplier
+      description: Custom rate multiplier (when Rate Override is 'Custom')
+      required: false
+      default: "1.0"
+      selector:
+        text:
+  response:
+    supported: true
+"""
+                
+                # Write restored content
+                with open(services_yaml_path, 'w', encoding='utf-8') as f:
+                    f.write(original_content)
+                
+                _LOGGER.info("Restored original services.yaml format")
+                
         except Exception as e:
-            _LOGGER.error("❌ Failed to restore services.yaml: %s", e)
-            return False
+            _LOGGER.error("Error restoring services.yaml: %s", e)
     
-    # Run the file operations in executor to avoid blocking
+    # Run in executor to avoid blocking
     await hass.async_add_executor_job(_restore_services_file)
