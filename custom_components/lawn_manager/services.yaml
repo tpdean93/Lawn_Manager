@@ -78,3 +78,103 @@ reload:
   name: Reload Lawn Manager
   description: Reload the Lawn Manager integration without restarting Home Assistant.
   fields: {}
+
+add_equipment:
+  name: Add Equipment
+  description: Add new lawn equipment to inventory.
+  fields:
+    equipment_type:
+      name: Equipment Type
+      description: Type of equipment
+      required: true
+      selector:
+        select:
+          options:
+            - sprayer
+            - spreader
+    brand:
+      name: Brand
+      description: Equipment brand
+      required: true
+      selector:
+        text:
+    capacity:
+      name: Capacity
+      description: Equipment capacity
+      required: true
+      selector:
+        number:
+          min: 0.1
+          max: 1000
+          step: 0.1
+    capacity_unit:
+      name: Capacity Unit
+      description: Unit for capacity
+      required: true
+      selector:
+        select:
+          options:
+            - gallons
+            - liters
+            - pounds
+            - kg
+
+get_equipment_options:
+  name: Get Equipment Options
+  description: Get available equipment options for dropdown selection.
+
+get_zone_options:
+  name: Get Zone Options
+  description: Get available zone options for dropdown selection.
+
+list_calculation_options:
+  name: List Calculation Options
+  description: List all available equipment and zones for rate calculation. Check logs for output.
+
+refresh_equipment_entity:
+  name: Refresh Equipment Entity
+  description: Force refresh the Equipment Selection entity to sync with current equipment inventory. To switch between Application Method and Equipment Selection entities, reload the integration.
+
+delete_equipment:
+  name: Delete Equipment
+  description: Delete equipment by ID.
+  fields:
+    equipment_id:
+      name: Equipment ID
+      description: Equipment ID to delete (use list_equipment to find IDs)
+      required: true
+      selector:
+        text:
+
+calculate_application_rate:
+  name: Calculate Application Rate
+  description: Calculate equipment-specific application rates for your zone. Run 'list_calculation_options' first to see available equipment and zones.
+  fields:
+    chemical:
+      name: Chemical
+      description: Chemical to calculate rates for
+      required: true
+      selector:
+        select:
+          options:
+            - "Fertilizer 10-10-10"
+            - "Weed Preventer"
+            - "Grub Killer"
+            - "Iron Supplement"
+            - "Urea"
+            - "T-Nex / PGR"
+            - "Disease Preventer"
+            - "Soil Conditioner"
+            - "Insecticide"
+    equipment_name:
+      name: Equipment Name
+      description: Enter the exact equipment name from list_calculation_options (e.g., 'Ryobi 4 Gallon Sprayer')
+      required: true
+      selector:
+        text:
+    zone:
+      name: Zone Name
+      description: Enter the exact zone name from list_calculation_options (e.g., 'Front Yard')
+      required: true
+      selector:
+        text:
