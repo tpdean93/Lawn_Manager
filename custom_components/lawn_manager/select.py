@@ -34,23 +34,29 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
     # Rate override options
     rate_options = ["Default", "Light (50%)", "Heavy (150%)", "Extra Heavy (200%)", "Custom"]
     
-    # Base entities (always created)
-    entities = [
-        LawnChemicalSelect(hass, entry, chemical_options),
-        LawnRateOverrideSelect(hass, entry, rate_options),
-    ]
+    # Create entities in strict order to ensure Equipment/Method selection appears first
+    entities = []
     
-    # Conditional method/equipment selection
+    # FIRST: Equipment/Method selection (use "00_" prefix for sorting)
     if len(equipment_options) > 1:  # More than just "None"
-        # If equipment is available, use Equipment Selection instead of Application Method
+        # If equipment is available, use Equipment Selection
         _LOGGER.warning(f"Equipment available ({len(equipment_options)-1} items), adding Equipment Selection entity")
-        entities.append(LawnEquipmentSelect(hass, entry, equipment_options, equipment_data))
+        # Default to first actual equipment (skip "None") - ensure it's not "None"
+        default_equipment = equipment_options[1] if len(equipment_options) > 1 else "None"
+        _LOGGER.warning(f"Setting Equipment Selection default to: {default_equipment}")
+        entities.append(LawnEquipmentSelect(hass, entry, equipment_options, equipment_data, default_equipment))
     else:
         # If no equipment, use manual Application Method selection
         _LOGGER.warning("No equipment available, adding Application Method entity")
         entities.append(LawnMethodSelect(hass, entry, method_options))
     
-    _LOGGER.warning(f"Adding {len(entities)} select entities")
+    # Add other entities AFTER equipment/method selection (these will sort after due to higher prefixes)
+    entities.extend([
+        LawnChemicalSelect(hass, entry, chemical_options),
+        LawnRateOverrideSelect(hass, entry, rate_options),
+    ])
+    
+    _LOGGER.warning(f"Adding {len(entities)} select entities in order: {[entity._attr_name for entity in entities]}")
     async_add_entities(entities)
 
 class LawnChemicalSelect(SelectEntity):
@@ -58,11 +64,29 @@ class LawnChemicalSelect(SelectEntity):
         self._hass = hass
         self._entry = entry
         self._attr_name = "Chemical Selection"
-        self._attr_unique_id = f"{entry.entry_id}_chemical_select"
+        self._attr_unique_id = f"bbb_chemical_{entry.entry_id}"
         _LOGGER.warning(f"Creating chemical select entity with unique_id: {self._attr_unique_id}")
         self._attr_options = options
-        self._attr_current_option = options[0]  # Default to first option
+        # Default to first actual chemical (not "None" or "Custom")
+        default_chemical = None
+        for option in options:
+            if option not in ["None", "Custom"]:
+                default_chemical = option
+                break
+        self._attr_current_option = default_chemical or options[0]  # Fallback to first if no good option
+        _LOGGER.warning(f"Chemical Selection defaulted to: {self._attr_current_option}")
         self._attr_icon = "mdi:flask-outline"
+
+    async def async_added_to_hass(self):
+        """Ensure proper default selection when entity is first added."""
+        # If current selection is "None" or "Custom", default to first actual chemical
+        if self._attr_current_option in ["None", "Custom"]:
+            for option in self._attr_options:
+                if option not in ["None", "Custom"]:
+                    self._attr_current_option = option
+                    _LOGGER.warning(f"Chemical Selection entity added - defaulted to: {self._attr_current_option}")
+                    self.async_write_ha_state()
+                    break
 
     @property
     def device_info(self):
@@ -82,7 +106,7 @@ class LawnRateOverrideSelect(SelectEntity):
         self._hass = hass
         self._entry = entry
         self._attr_name = "Application Rate"
-        self._attr_unique_id = f"{entry.entry_id}_rate_override"
+        self._attr_unique_id = f"ccc_rate_{entry.entry_id}"
         self._attr_options = options
         self._attr_current_option = options[0]  # Default to "Default"
         self._attr_icon = "mdi:gauge"
@@ -105,7 +129,7 @@ class LawnMethodSelect(SelectEntity):
         self._hass = hass
         self._entry = entry
         self._attr_name = "Application Method"
-        self._attr_unique_id = f"{entry.entry_id}_method_select"
+        self._attr_unique_id = f"aaa_method_{entry.entry_id}"
         self._attr_options = options
         self._attr_current_option = options[0]  # Default to first option
         self._attr_icon = "mdi:spray"
@@ -126,14 +150,15 @@ class LawnMethodSelect(SelectEntity):
 class LawnEquipmentSelect(SelectEntity):
     """Select entity for choosing equipment."""
     
-    def __init__(self, hass, entry, options, equipment_data):
+    def __init__(self, hass, entry, options, equipment_data, default_equipment):
         self._hass = hass
         self._entry = entry
         self._equipment_data = equipment_data
         self._attr_name = "Equipment Selection"
-        self._attr_unique_id = f"{entry.entry_id}_equipment_select"
+        self._attr_unique_id = f"aaa_equipment_{entry.entry_id}"
+        self._attr_entity_category = None  # Force as main control entity # Changed unique_id to sort early
         self._attr_options = options
-        self._attr_current_option = options[0] if options else "None"
+        self._attr_current_option = default_equipment
         self._attr_icon = "mdi:tools"
         self._unsub_dispatcher = None
 
@@ -143,6 +168,12 @@ class LawnEquipmentSelect(SelectEntity):
         self._unsub_dispatcher = async_dispatcher_connect(
             self.hass, "lawn_manager_equipment_update", self._handle_equipment_update
         )
+        
+        # Ensure proper default selection when entity is first added
+        if len(self._attr_options) > 1 and self._attr_current_option == "None":
+            self._attr_current_option = self._attr_options[1]  # First actual equipment
+            _LOGGER.warning(f"Equipment Selection entity added - defaulted to: {self._attr_current_option}")
+            self.async_write_ha_state()
 
     async def async_will_remove_from_hass(self):
         """Unsubscribe from updates when entity is removed."""
@@ -165,9 +196,16 @@ class LawnEquipmentSelect(SelectEntity):
         # Update options
         self._attr_options = new_options
         
-        # Reset selection if current option no longer exists
-        if self._attr_current_option not in new_options:
+        # Always default to first actual equipment if available (not "None")
+        if len(new_options) > 1:
+            # If current selection is "None" or not in new options, default to first equipment
+            if self._attr_current_option == "None" or self._attr_current_option not in new_options:
+                self._attr_current_option = new_options[1]  # First actual equipment
+                _LOGGER.warning(f"Equipment Selection defaulted to: {self._attr_current_option}")
+        else:
+            # No equipment available, reset to "None"
             self._attr_current_option = "None"
+            _LOGGER.warning("No equipment available, Equipment Selection set to None")
         
         # Update the entity
         self.async_write_ha_state()
