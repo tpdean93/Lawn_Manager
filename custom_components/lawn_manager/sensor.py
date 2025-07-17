@@ -67,10 +67,17 @@ class LawnManagerSensorManager:
             self.chemical_sensors[chem_name] = sensor
             entities.append(sensor)
 
+        # Add equipment inventory sensor
+        self.equipment_sensor = EquipmentInventorySensor(self.entry.entry_id, yard_zone, location)
+        entities.append(self.equipment_sensor)
+
         self.async_add_entities(entities, update_before_add=True)
 
         # Listen for updates
         self._unsub_dispatcher = async_dispatcher_connect(self.hass, "lawn_manager_update", self._handle_update_signal)
+        
+        # Listen for equipment updates
+        self._unsub_equipment_dispatcher = async_dispatcher_connect(self.hass, "lawn_manager_equipment_update", self._handle_equipment_update_signal)
 
     async def _handle_update_signal(self):
         store = Store(self.hass, STORAGE_VERSION, STORAGE_KEY)
@@ -83,22 +90,20 @@ class LawnManagerSensorManager:
         # Add new chemical sensors
         for chem_name in new_chems:
             chem_data = data["applications"][chem_name]
-            config = self.entry.data
-            weather_entity = config.get("weather_entity")
-            sensor = ChemicalApplicationSensor(self.entry.entry_id, chem_name, chem_data, weather_entity)
+            sensor = ChemicalApplicationSensor(self.entry.entry_id, chem_name, chem_data, self.mow_sensor._weather_entity if hasattr(self.mow_sensor, '_weather_entity') else None)
             self.chemical_sensors[chem_name] = sensor
             new_entities.append(sensor)
-            self.known_chemicals.add(chem_name)
 
         if new_entities:
-            self.async_add_entities(new_entities)
+            self.async_add_entities(new_entities, update_before_add=True)
 
-        # Remove deleted chemical sensors
-        for chem_name in removed_chems:
-            sensor = self.chemical_sensors.pop(chem_name, None)
-            if sensor:
-                await sensor.async_remove()
-            self.known_chemicals.remove(chem_name)
+        self.known_chemicals = current_chems
+
+    async def _handle_equipment_update_signal(self):
+        """Handle equipment update signal."""
+        if hasattr(self, 'equipment_sensor') and self.equipment_sensor:
+            await self.equipment_sensor.async_update()
+            self.equipment_sensor.async_write_ha_state()
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities):
@@ -708,6 +713,86 @@ class LawnWeatherSensor(SensorEntity):
     @property
     def unique_id(self):
         return f"lawn_manager_{self._entry_id}_{self._yard_zone.lower().replace(' ', '_')}_weather"
+
+    @property
+    def device_info(self):
+        return {
+            "identifiers": {(DOMAIN, self._entry_id)},
+            "name": "Lawn Manager",
+            "manufacturer": "Custom Integration",
+        }
+
+
+class EquipmentInventorySensor(SensorEntity):
+    """Sensor to display the list of equipment and their status."""
+    
+    def __init__(self, entry_id, yard_zone, location):
+        self._entry_id = entry_id
+        self._yard_zone = yard_zone
+        self._location = location
+        self._equipment_list = []
+        self._unsub_dispatcher = None
+
+    async def async_added_to_hass(self):
+        self._unsub_dispatcher = async_dispatcher_connect(
+            self.hass, "lawn_manager_equipment_update", self._handle_equipment_update_signal
+        )
+
+    async def async_will_remove_from_hass(self):
+        if self._unsub_dispatcher:
+            self._unsub_dispatcher()
+            self._unsub_dispatcher = None
+
+    async def _handle_equipment_update_signal(self):
+        await self.async_update()
+        self.async_write_ha_state()
+
+    async def async_update(self):
+        # Load equipment list from storage
+        from homeassistant.helpers.storage import Store
+        from .const import STORAGE_VERSION, EQUIPMENT_STORAGE_KEY
+        
+        equipment_store = Store(self.hass, STORAGE_VERSION, EQUIPMENT_STORAGE_KEY)
+        equipment_data = await equipment_store.async_load() or {}
+        
+        # Convert equipment data to list format
+        self._equipment_list = []
+        for eq_id, eq_info in equipment_data.items():
+            self._equipment_list.append({
+                "id": eq_id,
+                "name": eq_info.get("friendly_name", "Unknown Equipment"),
+                "type": eq_info.get("type", "unknown"),
+                "brand": eq_info.get("brand", "Unknown"),
+                "capacity": f"{eq_info.get('capacity', 0)} {eq_info.get('capacity_unit', 'units')}"
+            })
+
+    @property
+    def name(self):
+        return f"{self._yard_zone} Equipment Inventory"
+
+    @property
+    def state(self):
+        if not self._equipment_list:
+            return "No equipment added"
+        return f"{len(self._equipment_list)} equipment items"
+
+    @property
+    def icon(self):
+        return "mdi:tools"
+
+    @property
+    def extra_state_attributes(self):
+        if not self._equipment_list:
+            return {"equipment_count": 0}
+        return {
+            "equipment_list": self._equipment_list,
+            "equipment_count": len(self._equipment_list),
+            "equipment_summary": [item["name"] for item in self._equipment_list]
+        }
+
+    @property
+    def unique_id(self):
+        return f"lawn_manager_{self._entry_id}_{self._yard_zone.lower().replace(' ', '_')}_equipment"
 
     @property
     def device_info(self):
