@@ -18,11 +18,16 @@ Get intelligent mobile notifications for your lawn care! These optional blueprin
 - **Fertilizer Opportunities**: "🌿 Good Day to Fertilize!" - When conditions are perfect for fertilizer
 - **Herbicide Opportunities**: "🚫 Good Day for Herbicide!" - When conditions are perfect for herbicide
 - **Rain Alerts**: "⛈️ Rain Alert" - Warns about rain affecting recent chemical applications
+- **Rate Calculation Reminders**: "🧪 Chemical Rate Calculator" - Reminders to calculate mixing instructions
 
 ### 📅 Seasonal Task Notifications
 - **High Priority Tasks**: Seasonal reminders for critical lawn care tasks
 - **Chemical Recommendations**: Seasonal timing for pre-emergent, fertilizer, etc.
 - **Temperature Alerts**: "🌡️ Temperature Alert" - Heat/cold warnings
+
+### 🔧 Equipment Notifications
+- **Equipment Setup Reminders**: "🔧 Equipment Setup" - Reminders to configure equipment for accurate calculations
+- **Rate Calculation Alerts**: "🧪 Calculate Application Rates" - When chemical applications are due
 
 ## 🎯 Available Blueprints
 
@@ -35,6 +40,7 @@ Get intelligent mobile notifications for your lawn care! These optional blueprin
 - ✅ Weather-based intelligence
 - ✅ Seasonal task integration
 - ✅ Priority-based alerts
+- ✅ Equipment and chemical calculation reminders
 
 **Best For**: Power users who want comprehensive lawn care notifications
 
@@ -57,6 +63,7 @@ Get intelligent mobile notifications for your lawn care! These optional blueprin
 - **Enable/Disable**: Toggle each notification type
 - **Overdue Threshold**: Days before urgent alerts (default: 3)
 - **Weather Opportunity Threshold**: Days of good weather before alerts (default: 2)
+- **Chemical Calculation Reminders**: Remind to calculate rates before applications
 
 ### Basic Notifications (Simple)
 - **Notification Device**: Your mobile device  
@@ -82,11 +89,27 @@ Perfect conditions - no rain expected for 6 hours.
 ```
 🌿 Good Day to Fertilize!
 Good conditions for fertilizer - light rain expected in 4 hours will help absorption.
+Use calculate_application_rate service for mixing instructions.
 ```
 
 ```
 🚫 Good Day for Herbicide!
 Perfect conditions - no rain for 3 days, no rain expected for 24 hours.
+Calculate rates: 0.75 oz per 1,000 sq ft with your equipment.
+```
+
+### Equipment Notifications
+```
+🔧 Equipment Setup Reminder
+Configure your sprayers and spreaders for accurate mixing calculations.
+Use the 3-step configuration flow to add equipment.
+```
+
+```
+🧪 Calculate Application Rates
+T-Nex application due - use calculate_application_rate service for:
+• 1.0 oz per 4-gallon tank (2.0 tbsp or 1/8 cup)
+• 0.25 oz per gallon (0.5 tbsp per gallon)
 ```
 
 ### Seasonal Notifications
@@ -94,6 +117,7 @@ Perfect conditions - no rain for 3 days, no rain expected for 24 hours.
 📅 Seasonal Lawn Care Reminder
 High Priority Tasks: Apply pre-emergent herbicide, Service mower and equipment.
 High Priority Chemicals: Pre-emergent, Fertilizer.
+Use equipment-specific rate calculations for accurate mixing.
 ```
 
 ### Weather Alerts
@@ -142,6 +166,7 @@ The blueprints use Home Assistant templating to:
 - Evaluate sensor states
 - Combine multiple data sources
 - Provide contextual recommendations
+- Include equipment-specific calculations
 
 ## 🔧 Troubleshooting
 
@@ -162,6 +187,11 @@ The blueprints use Home Assistant templating to:
 - Check entity names in blueprint configuration
 - Review Home Assistant logs for template errors
 
+**Equipment Notifications Missing**:
+- Ensure equipment is configured in the integration
+- Check that Equipment Selection entity exists
+- Verify chemical calculation services are available
+
 ### Testing Notifications
 1. Create test automation from blueprint
 2. Set notification time to a few minutes in the future
@@ -175,12 +205,24 @@ The blueprints use Home Assistant templating to:
 3. **Customize Timing**: Adjust notification times to match your schedule
 4. **Monitor Performance**: Check that notifications aren't too frequent or annoying
 5. **Seasonal Adjustments**: Consider different notification needs by season
+6. **Equipment Integration**: Use notifications to remind you to calculate rates before applications
+7. **Chemical Timing**: Combine weather alerts with chemical application reminders
 
 ## 🔄 Updates and Maintenance
 
 - **Blueprint Updates**: Re-import blueprints when new versions are available
 - **Sensor Changes**: Update blueprint configurations if sensor names change
 - **Seasonal Tuning**: Adjust thresholds based on your lawn's needs
+- **Equipment Updates**: Update notifications when adding new equipment
+
+## 🧪 Integration with Chemical Calculator
+
+The notifications work seamlessly with the new chemical calculation features:
+
+- **Rate Calculation Reminders**: Get notified when it's time to calculate mixing instructions
+- **Equipment Setup Alerts**: Reminders to configure equipment for accurate calculations
+- **Chemical Application Timing**: Combine weather alerts with rate calculation reminders
+- **Kitchen Measurements**: Notifications can include kitchen-friendly measurements
 
 ---
 
