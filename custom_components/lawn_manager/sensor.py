@@ -138,10 +138,19 @@ class LawnMowSensor(SensorEntity):
     async def async_update(self):
         data = await self._store.async_load() or {}
         try:
-            self._last_mow = dt_util.as_local(
-                datetime.strptime(data.get("last_mow"), "%Y-%m-%d")
-            )
-        except Exception:
+            # Parse the date string and ensure it's treated as local date
+            date_str = data.get("last_mow")
+            if date_str:
+                # Parse as date only, no time component
+                parsed_date = datetime.strptime(date_str, "%Y-%m-%d").date()
+                # Create datetime at midnight in local timezone
+                self._last_mow = dt_util.as_local(
+                    datetime.combine(parsed_date, datetime.min.time())
+                )
+            else:
+                self._last_mow = None
+        except Exception as e:
+            _LOGGER.error("Error parsing last_mow date: %s", e)
             self._last_mow = dt_util.now() - timedelta(days=self._mow_interval + 1)
 
     @property
@@ -229,14 +238,23 @@ class LawnMowDueSensor(SensorEntity):
 
     async def async_update(self):
         data = await self._store.async_load() or {}
-        try:
-            if data.get("last_mow"):
-                self._last_mow = dt_util.as_local(
-                    datetime.strptime(data.get("last_mow"), "%Y-%m-%d")
-                )
-            else:
+        if data.get("last_mow"):
+            try:
+                # Parse the date string and ensure it's treated as local date
+                date_str = data.get("last_mow")
+                if date_str:
+                    # Parse as date only, no time component
+                    parsed_date = datetime.strptime(date_str, "%Y-%m-%d").date()
+                    # Create datetime at midnight in local timezone
+                    self._last_mow = dt_util.as_local(
+                        datetime.combine(parsed_date, datetime.min.time())
+                    )
+                else:
+                    self._last_mow = None
+            except Exception as e:
+                _LOGGER.error("Error parsing last_mow date: %s", e)
                 self._last_mow = None
-        except Exception:
+        else:
             self._last_mow = None
         
         # Store application history for seasonal recommendations
