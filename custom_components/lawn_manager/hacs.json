@@ -1,0 +1,10 @@
+{
+  "name": "Lawn Manager",
+  "content_in_root": false,
+  "filename": "lawn_manager",
+  "country": ["US"],
+  "homeassistant": "2023.1.0",
+  "render_readme": true,
+  "zip_release": false,
+  "persistent_directory": "custom_components/lawn_manager"
+} 
