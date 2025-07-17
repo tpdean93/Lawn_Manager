@@ -80,7 +80,6 @@ class LogChemicalButton(ButtonEntity):
         chemical_select_entity = None
         custom_chemical_entity = None
         method_select_entity = None
-        equipment_select_entity = None
         rate_override_entity = None
         custom_rate_entity = None
         application_date_entity = None
@@ -94,8 +93,6 @@ class LogChemicalButton(ButtonEntity):
                 custom_chemical_entity = entity_id
             elif entity_id.startswith("select.") and "application_method" in entity_id:
                 method_select_entity = entity_id
-            elif entity_id.startswith("select.") and "equipment_select" in entity_id:
-                equipment_select_entity = entity_id
             elif entity_id.startswith("select.") and "application_rate" in entity_id:
                 rate_override_entity = entity_id
             elif entity_id.startswith("text.") and "custom_rate_multiplier" in entity_id:
@@ -103,37 +100,22 @@ class LogChemicalButton(ButtonEntity):
             elif entity_id.startswith("date.") and "application_date" in entity_id:
                 application_date_entity = entity_id
         
-        _LOGGER.warning(f"Found entities: Chemical={chemical_select_entity}, Custom={custom_chemical_entity}, Method={method_select_entity}, Equipment={equipment_select_entity}, Rate={rate_override_entity}, CustomRate={custom_rate_entity}, Date={application_date_entity}")
+        _LOGGER.warning(f"Found entities: Chemical={chemical_select_entity}, Custom={custom_chemical_entity}, Method={method_select_entity}, Rate={rate_override_entity}, CustomRate={custom_rate_entity}, Date={application_date_entity}")
         
         # Get current values
         chemical_select = self._hass.states.get(chemical_select_entity) if chemical_select_entity else None
         custom_chemical = self._hass.states.get(custom_chemical_entity) if custom_chemical_entity else None
         method_select = self._hass.states.get(method_select_entity) if method_select_entity else None
-        equipment_select = self._hass.states.get(equipment_select_entity) if equipment_select_entity else None
         rate_override = self._hass.states.get(rate_override_entity) if rate_override_entity else None
         custom_rate = self._hass.states.get(custom_rate_entity) if custom_rate_entity else None
         application_date = self._hass.states.get(application_date_entity) if application_date_entity else None
         
-        _LOGGER.warning(f"Entity states - Chemical: {chemical_select.state if chemical_select else 'NOT FOUND'}, Custom: {custom_chemical.state if custom_chemical else 'NOT FOUND'}, Method: {method_select.state if method_select else 'NOT FOUND'}, Equipment: {equipment_select.state if equipment_select else 'NOT FOUND'}, Rate: {rate_override.state if rate_override else 'NOT FOUND'}, CustomRate: {custom_rate.state if custom_rate else 'NOT FOUND'}, Date: {application_date.state if application_date else 'NOT FOUND'}")
-        
-        # Determine application method
-        if equipment_select and equipment_select.state != "None":
-            # Get method from equipment type
-            equipment_type = equipment_select.attributes.get("equipment_type", "sprayer")
-            method = equipment_type.title()  # "sprayer" -> "Sprayer", "spreader" -> "Spreader"
-            _LOGGER.warning(f"Using method from equipment: {method}")
-        elif method_select:
-            # Use manual method selection
-            method = method_select.state
-            _LOGGER.warning(f"Using manual method selection: {method}")
-        else:
-            # Fallback
-            method = "Sprayer"
-            _LOGGER.warning(f"Using fallback method: {method}")
+        _LOGGER.warning(f"Entity states - Chemical: {chemical_select.state if chemical_select else 'NOT FOUND'}, Custom: {custom_chemical.state if custom_chemical else 'NOT FOUND'}, Method: {method_select.state if method_select else 'NOT FOUND'}, Rate: {rate_override.state if rate_override else 'NOT FOUND'}, CustomRate: {custom_rate.state if custom_rate else 'NOT FOUND'}, Date: {application_date.state if application_date else 'NOT FOUND'}")
         
         # Determine which chemical to use
         selected_chemical = chemical_select.state if chemical_select else None
         custom_chemical_value = custom_chemical.state if custom_chemical else ""
+        method = method_select.state if method_select else "Sprayer"
         rate_override_value = rate_override.state if rate_override else "Default"
         custom_rate_value = custom_rate.state if custom_rate else "1.0"
         application_date_value = application_date.state if application_date else None
