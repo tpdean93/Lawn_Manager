@@ -34,19 +34,14 @@ class LogMowButton(ButtonEntity):
     async def async_press(self):
         _LOGGER.info("Log Mow button pressed")
         
-        # Find the application date entity
-        application_date_entity = None
-        for state in self._hass.states.async_all():
-            entity_id = state.entity_id
-            if entity_id.startswith("date.") and "application_date" in entity_id:
-                application_date_entity = entity_id
-                break
+        # Construct the application date entity ID directly
+        application_date_entity = f"date.lawn_manager_{self._entry.entry_id}_application_date"
         
         # Get the selected date
-        application_date = self._hass.states.get(application_date_entity) if application_date_entity else None
+        application_date = self._hass.states.get(application_date_entity)
         application_date_value = application_date.state if application_date else None
         
-        _LOGGER.info("Log Mow using date: %s", application_date_value)
+        _LOGGER.info("Log Mow using date: %s from entity: %s", application_date_value, application_date_entity)
         
         # Call the service with the selected date
         service_data = {}
@@ -76,7 +71,7 @@ class LogChemicalButton(ButtonEntity):
     async def async_press(self):
         _LOGGER.warning("Log Chemical Application button pressed - DEBUG")
         
-        # Find entities by searching through all states
+        # Find entities by searching through all states (like the original working version)
         chemical_select_entity = None
         custom_chemical_entity = None
         method_select_entity = None
@@ -85,9 +80,9 @@ class LogChemicalButton(ButtonEntity):
         custom_rate_entity = None
         application_date_entity = None
         
-        # Search for our entities in all states
-        for state in self._hass.states.async_all():  # ✅ Iterate through State objects
-            entity_id = state.entity_id  # ✅ Get entity_id from State object
+        # Search for our entities in all states (original approach)
+        for state in self._hass.states.async_all():
+            entity_id = state.entity_id
             if entity_id.startswith("select.") and "chemical_selection" in entity_id:
                 chemical_select_entity = entity_id
             elif entity_id.startswith("text.") and "custom_chemical_name" in entity_id:
