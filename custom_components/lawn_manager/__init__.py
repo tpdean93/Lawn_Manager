@@ -6,7 +6,7 @@ from homeassistant.util import dt as dt_util
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 import logging
 
-from .const import DOMAIN, CHEMICALS, EQUIPMENT_STORAGE_KEY
+from .const import DOMAIN, CHEMICALS
 
 _LOGGER = logging.getLogger(__name__)
 STORAGE_KEY = "lawn_manager_data"
@@ -18,172 +18,17 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     return True
 
 
-async def _update_services_yaml_with_user_data(hass: HomeAssistant, entry: ConfigEntry):
-    """Update services.yaml with user's specific equipment and zones."""
-    import os
-    import yaml
-    
-    # Get all lawn manager entries to collect all zones
-    entries = hass.config_entries.async_entries(DOMAIN)
-    
-    # Collect all equipment from this entry
-    equipment_options = []
-    if "equipment_list" in entry.data:
-        for equipment in entry.data["equipment_list"]:
-            equipment_options.append(equipment["friendly_name"])
-    
-    # Collect all zones from all entries
-    zone_options = []
-    for config_entry in entries:
-        zone = config_entry.data.get("yard_zone", "Unknown Zone")
-        if zone not in zone_options:
-            zone_options.append(zone)
-    
-    # Only update if we have user data
-    if not equipment_options and not zone_options:
-        return
-        
-    # Path to services.yaml
-    services_yaml_path = os.path.join(os.path.dirname(__file__), "services.yaml")
-    
-    def _update_services_file():
-        """Update services file synchronously in executor."""
-        try:
-            # Read current services.yaml
-            with open(services_yaml_path, 'r', encoding='utf-8') as file:
-                services_data = yaml.safe_load(file)
-            
-            # Update calculate_application_rate service if it exists
-            if "calculate_application_rate" in services_data:
-                fields = services_data["calculate_application_rate"].get("fields", {})
-                
-                # Update equipment field if we have equipment
-                if equipment_options and "equipment_name" in fields:
-                    fields["equipment_name"]["selector"] = {
-                        "select": {
-                            "options": equipment_options,
-                            "custom_value": True
-                        }
-                    }
-                    _LOGGER.info("Updated services.yaml with %d equipment options", len(equipment_options))
-                
-                # Update zone field if we have zones
-                if zone_options and "zone" in fields:
-                    fields["zone"]["selector"] = {
-                        "select": {
-                            "options": zone_options,
-                            "custom_value": True
-                        }
-                    }
-                    _LOGGER.info("Updated services.yaml with %d zone options", len(zone_options))
-            
-            # Write updated services.yaml
-            with open(services_yaml_path, 'w', encoding='utf-8') as file:
-                yaml.dump(services_data, file, default_flow_style=False, sort_keys=False, allow_unicode=True)
-                
-            _LOGGER.info("✅ Services.yaml updated with user-specific options")
-            return True
-            
-        except Exception as e:
-            _LOGGER.warning("Failed to update services.yaml: %s", e)
-            return False
-    
-    # Run the file operations in executor to avoid blocking
-    await hass.async_add_executor_job(_update_services_file)
-
-
-async def _store_equipment_from_config(hass: HomeAssistant, entry: ConfigEntry):
-    """Store equipment from config flow into equipment storage."""
-    if "equipment_list" not in entry.data:
-        return
-        
-    equipment_store = Store(hass, STORAGE_VERSION, EQUIPMENT_STORAGE_KEY)
-    equipment_data = await equipment_store.async_load() or {}
-    
-    # Add each equipment from config flow
-    for equipment in entry.data["equipment_list"]:
-        equipment_id = equipment["id"]
-        equipment_data[equipment_id] = {
-            "type": equipment["type"],
-            "brand": equipment["brand"],
-            "capacity": equipment["capacity"],
-            "capacity_unit": equipment["capacity_unit"],
-            "friendly_name": equipment["friendly_name"],
-            "created": dt_util.now().strftime("%Y-%m-%d %H:%M:%S"),
-            "source": "config_flow"
-        }
-        _LOGGER.info("Stored equipment from config: %s", equipment["friendly_name"])
-    
-    await equipment_store.async_save(equipment_data)
-    
-    # Trigger equipment update signal
-    async_dispatcher_send(hass, "lawn_manager_equipment_update")
-
-
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Lawn Manager from a config entry."""
     _LOGGER.info("Setting up Lawn Manager entry: %s", entry.title)
 
-    # Store equipment from config flow if provided
-    await _store_equipment_from_config(hass, entry)
-    
-    # Update services.yaml with user's equipment and zones if provided
-    await _update_services_yaml_with_user_data(hass, entry)
-
     # Register services
     await _register_services(hass)
-    
-    # Register equipment services from services.py
-    from .services import async_register_services
-    await async_register_services(hass)
 
     # Forward setup to platforms
-    await hass.config_entries.async_forward_entry_setups(entry, ["select", "date", "text", "sensor", "binary_sensor", "button"])
+    await hass.config_entries.async_forward_entry_setups(entry, ["sensor", "binary_sensor", "button", "select", "text", "date"])
 
     return True
-
-
-async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Unload a config entry."""
-    _LOGGER.info("Unloading Lawn Manager entry: %s", entry.title)
-    
-    # Restore original services.yaml
-    await _restore_original_services_yaml(hass)
-    
-    # Unload platforms
-    unload_ok = await hass.config_entries.async_unload_platforms(
-        entry, ["select", "date", "text", "sensor", "binary_sensor", "button"]
-    )
-    
-    # Optional: Clear entity registry entries to force recreation in proper order
-    # This helps fix entity ordering issues
-    await _cleanup_entity_registry_for_entry(hass, entry)
-    
-    return unload_ok
-
-
-async def _cleanup_entity_registry_for_entry(hass: HomeAssistant, entry: ConfigEntry):
-    """Remove all entities for this config entry from entity registry to force proper ordering on reload."""
-    try:
-        from homeassistant.helpers import entity_registry as er
-        
-        entity_registry = er.async_get(hass)
-        
-        # Find all entities for this integration entry
-        entities_to_remove = []
-        for entity_id, entity_entry in entity_registry.entities.items():
-            if entity_entry.config_entry_id == entry.entry_id:
-                entities_to_remove.append(entity_id)
-        
-        # Remove entities from registry (they will be recreated on next load)
-        for entity_id in entities_to_remove:
-            _LOGGER.info("Removing entity from registry for reordering: %s", entity_id)
-            entity_registry.async_remove(entity_id)
-            
-        _LOGGER.info("Cleaned up %d entities from registry for proper ordering", len(entities_to_remove))
-        
-    except Exception as e:
-        _LOGGER.warning("Could not cleanup entity registry: %s", e)
 
 
 async def _register_services(hass: HomeAssistant):
@@ -350,6 +195,12 @@ async def _register_services(hass: HomeAssistant):
         if entry:
             await hass.config_entries.async_reload(entry.entry_id)
 
+    async def handle_remove_entry(call: ServiceCall):
+        """Handle removal of a config entry by purging stored data."""
+        store = Store(hass, STORAGE_VERSION, STORAGE_KEY)
+        await store.async_remove()
+        _LOGGER.info("✅ Lawn Manager data purged.")
+
     # Register services if not already registered
     if not hass.services.has_service(DOMAIN, "log_mow"):
         hass.services.async_register(DOMAIN, "log_mow", handle_log_mow)
@@ -360,104 +211,11 @@ async def _register_services(hass: HomeAssistant):
     if not hass.services.has_service(DOMAIN, "reload"):
         hass.services.async_register(DOMAIN, "reload", handle_reload)
 
+    if not hass.services.has_service(DOMAIN, "remove_entry"):
+        hass.services.async_register(DOMAIN, "remove_entry", handle_remove_entry)
+
 
 async def async_remove_entry(hass, entry):
     """Handle removal of a config entry by purging stored data."""
-    # Remove main storage
-    main_store = Store(hass, STORAGE_VERSION, STORAGE_KEY)
-    await main_store.async_remove()
-    
-    # Remove equipment storage
-    equipment_store = Store(hass, STORAGE_VERSION, EQUIPMENT_STORAGE_KEY)
-    equipment_data = await equipment_store.async_load() or {}
-    if equipment_data:
-        _LOGGER.info("Removing %d equipment entries during config entry removal", len(equipment_data))
-        await equipment_store.async_remove()
-    
-    # Restore original services.yaml by removing dynamic modifications
-    await _restore_original_services_yaml(hass)
-    
-    _LOGGER.info("✅ Config entry removed - all Lawn Manager data, equipment, and services.yaml modifications cleaned up.")
-
-
-async def _restore_original_services_yaml(hass: HomeAssistant):
-    """Restore original services.yaml without user customizations."""
-    import os
-    
-    # Path to services.yaml
-    services_yaml_path = os.path.join(os.path.dirname(__file__), "services.yaml")
-    
-    def _restore_services_file():
-        """Restore services file synchronously in executor."""
-        try:
-            # Read current services.yaml
-            with open(services_yaml_path, 'r', encoding='utf-8') as f:
-                content = f.read()
-            
-            # Only restore if it contains user customizations (dynamic equipment/zones)
-            if 'select:' in content and ('equipment_names' in content or 'zone_names' in content):
-                # This is the original static content (equipment and zone as text fields)
-                original_content = """\
-list_calculation_options:
-  name: List Calculation Options
-  description: Get available equipment and zone options for calculations
-  response:
-    supported: true
-
-calculate_application_rate:
-  name: Calculate Application Rate
-  description: Calculate chemical application rate with detailed mixing instructions
-  fields:
-    chemical_name:
-      name: Chemical Name
-      description: Name of the chemical to apply
-      required: true
-      selector:
-        text:
-    equipment_name:
-      name: Equipment Name  
-      description: Name of equipment to use (optional, will auto-determine method)
-      required: false
-      selector:
-        text:
-    zone_name:
-      name: Zone Name
-      description: Name of the lawn zone
-      required: true
-      selector:
-        text:
-    rate_override:
-      name: Rate Override
-      description: Override application rate
-      required: false
-      default: "Default"
-      selector:
-        select:
-          options:
-            - "Default"
-            - "Light (50%)"
-            - "Heavy (150%)"
-            - "Extra Heavy (200%)"
-            - "Custom"
-    custom_rate:
-      name: Custom Rate Multiplier
-      description: Custom rate multiplier (when Rate Override is 'Custom')
-      required: false
-      default: "1.0"
-      selector:
-        text:
-  response:
-    supported: true
-"""
-                
-                # Write restored content
-                with open(services_yaml_path, 'w', encoding='utf-8') as f:
-                    f.write(original_content)
-                
-                _LOGGER.info("Restored original services.yaml format")
-                
-        except Exception as e:
-            _LOGGER.error("Error restoring services.yaml: %s", e)
-    
-    # Run in executor to avoid blocking
-    await hass.async_add_executor_job(_restore_services_file)
+    store = Store(hass, STORAGE_VERSION, STORAGE_KEY)
+    await store.async_remove()
