@@ -64,7 +64,7 @@ class LawnChemicalSelect(SelectEntity):
         self._hass = hass
         self._entry = entry
         self._attr_name = "Chemical Selection"
-        self._attr_unique_id = f"bbb_chemical_{entry.entry_id}"
+        self._attr_unique_id = f"{entry.entry_id}_chemical_select"
         _LOGGER.warning(f"Creating chemical select entity with unique_id: {self._attr_unique_id}")
         self._attr_options = options
         # Default to first actual chemical (not "None" or "Custom")
@@ -106,7 +106,7 @@ class LawnRateOverrideSelect(SelectEntity):
         self._hass = hass
         self._entry = entry
         self._attr_name = "Application Rate"
-        self._attr_unique_id = f"ccc_rate_{entry.entry_id}"
+        self._attr_unique_id = f"{entry.entry_id}_rate_override"
         self._attr_options = options
         self._attr_current_option = options[0]  # Default to "Default"
         self._attr_icon = "mdi:gauge"
@@ -129,7 +129,7 @@ class LawnMethodSelect(SelectEntity):
         self._hass = hass
         self._entry = entry
         self._attr_name = "Application Method"
-        self._attr_unique_id = f"aaa_method_{entry.entry_id}"
+        self._attr_unique_id = f"{entry.entry_id}_method_select"
         self._attr_options = options
         self._attr_current_option = options[0]  # Default to first option
         self._attr_icon = "mdi:spray"
@@ -155,8 +155,8 @@ class LawnEquipmentSelect(SelectEntity):
         self._entry = entry
         self._equipment_data = equipment_data
         self._attr_name = "Equipment Selection"
-        self._attr_unique_id = f"aaa_equipment_{entry.entry_id}"
-        self._attr_entity_category = None  # Force as main control entity # Changed unique_id to sort early
+        self._attr_unique_id = f"{entry.entry_id}_equipment_select"
+        self._attr_entity_category = None
         self._attr_options = options
         self._attr_current_option = default_equipment
         self._attr_icon = "mdi:tools"
