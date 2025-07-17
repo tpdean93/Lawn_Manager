@@ -45,19 +45,26 @@ async def async_register_services(hass: HomeAssistant) -> None:
     store = Store(hass, STORAGE_VERSION, STORAGE_KEY)
     equipment_store = Store(hass, STORAGE_VERSION, EQUIPMENT_STORAGE_KEY)
 
-    async def handle_log_mow(call: ServiceCall):
-        """Handle log_mow service."""
-        _LOGGER.info("🔧 log_mow called")
-        data = await store.async_load() or {}
-        now = dt_util.now().strftime("%Y-%m-%d")
-        data["last_mow"] = now
-        await store.async_save(data)
-        _LOGGER.info("✅ Mow logged: %s", now)
-
     async def handle_log_application(call: ServiceCall):
         """Handle log_application service."""
-        chemical = call.data.get("chemical")
+        # Handle both old format (chemical) and new format (chemical_select/custom_chemical)
+        selected = call.data.get("chemical_select")
+        custom = call.data.get("custom_chemical")
+        
+        if call.data.get("chemical"):
+            chemical = call.data.get("chemical")
+        elif custom and custom.strip():
+            chemical = custom.strip()
+        elif selected:
+            chemical = selected
+        else:
+            chemical = None
+        
         _LOGGER.info("🔧 log_application called for %s", chemical)
+        
+        if not chemical:
+            _LOGGER.error("❌ No chemical name provided.")
+            return
 
         data = await store.async_load() or {}
         now = dt_util.now().strftime("%Y-%m-%d")
@@ -437,7 +444,6 @@ async def async_register_services(hass: HomeAssistant) -> None:
         _LOGGER.info("✅ Equipment storage cleared")
 
     # Register all services
-    hass.services.async_register(DOMAIN, "log_mow", handle_log_mow)
     hass.services.async_register(DOMAIN, "log_application", handle_log_application)
     hass.services.async_register(DOMAIN, "add_equipment", handle_add_equipment)
     hass.services.async_register(DOMAIN, "delete_equipment", handle_delete_equipment)
