@@ -3,6 +3,28 @@
 
 A comprehensive Home Assistant integration for intelligent lawn care management with **professional-grade chemical calculations**, **equipment management**, and **smart notifications**.
 
+## 🚀 Quick Installation
+
+### Easy Installation via HACS
+
+[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=tpdean93&repository=Lawn_Manager&category=integration)
+
+**Or manually add via HACS:**
+1. Go to HACS → Integrations
+2. Click the 3-dot menu → Custom repositories
+3. Add: `https://github.com/tpdean93/Lawn_Manager`
+4. Category: Integration
+5. Install "Lawn Manager"
+6. Restart Home Assistant
+7. Go to Settings → Devices & Services → Add Integration
+8. Search for "Lawn Manager" and configure
+
+### Manual Installation
+1. Download the latest release
+2. Copy `custom_components/lawn_manager/` to your Home Assistant `custom_components/` directory
+3. Restart Home Assistant
+4. Add the integration via Settings → Devices & Services
+
 ## 🌟 Major Features
 
 ### 🧪 Professional Chemical Calculations
