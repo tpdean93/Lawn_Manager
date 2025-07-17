@@ -437,8 +437,9 @@ async def async_register_services(hass: HomeAssistant) -> None:
         _LOGGER.info("✅ Equipment storage cleared")
 
     # Register all services
-    hass.services.async_register(DOMAIN, "log_mow", handle_log_mow)
-    hass.services.async_register(DOMAIN, "log_application", handle_log_application)
+    # NOTE: log_mow and log_application are registered in __init__.py to avoid conflicts
+    # hass.services.async_register(DOMAIN, "log_mow", handle_log_mow)
+    # hass.services.async_register(DOMAIN, "log_application", handle_log_application)
     hass.services.async_register(DOMAIN, "add_equipment", handle_add_equipment)
     hass.services.async_register(DOMAIN, "delete_equipment", handle_delete_equipment)
     hass.services.async_register(DOMAIN, "get_equipment_options", handle_get_equipment_options, supports_response=True)
