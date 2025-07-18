@@ -8,7 +8,8 @@ CONF_MOW_INTERVAL = "mow_interval"
 DEFAULT_NAME = "Lawn Manager"
 DEFAULT_MOW_INTERVAL = 7
 
-STORAGE_KEY = "lawn_manager_data"
+# STORAGE_KEY = "lawn_manager_data" # OLD - shared across all zones
+# Now we need zone-specific storage - use get_storage_key(entry_id) function instead
 EQUIPMENT_STORAGE_KEY = "lawn_manager_equipment"
 STORAGE_VERSION = 1
 
@@ -30,6 +31,10 @@ GRASS_TYPES = {
 
 # For backward compatibility
 GRASS_TYPE_LIST = list(GRASS_TYPES.keys())
+
+def get_storage_key(entry_id: str) -> str:
+    """Get zone-specific storage key to ensure proper zone isolation."""
+    return f"lawn_manager_data_{entry_id}"
 
 CHEMICALS = {
     "Fertilizer 10-10-10": {
