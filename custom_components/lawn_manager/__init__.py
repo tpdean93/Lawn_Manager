@@ -6,7 +6,7 @@ from homeassistant.util import dt as dt_util
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 import logging
 
-from .const import DOMAIN, CHEMICALS, EQUIPMENT_STORAGE_KEY
+from .const import DOMAIN, CHEMICALS, EQUIPMENT_STORAGE_KEY, get_storage_key
 
 _LOGGER = logging.getLogger(__name__)
 STORAGE_KEY = "lawn_manager_data"
@@ -145,12 +145,19 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 async def _register_services(hass: HomeAssistant):
     """Register custom services for Lawn Manager."""
-    store = Store(hass, STORAGE_VERSION, STORAGE_KEY)
 
     async def handle_log_mow(call: ServiceCall):
         _LOGGER.info("🔧 log_mow service called")
         application_date = call.data.get("application_date")
+        zone_entry_id = call.data.get("_zone_entry_id")
         
+        if not zone_entry_id:
+            _LOGGER.error("❌ No zone entry ID provided - cannot determine which zone to update")
+            return
+            
+        # Use zone-specific storage
+        zone_storage_key = get_storage_key(zone_entry_id)
+        store = Store(hass, STORAGE_VERSION, zone_storage_key)
         data = await store.async_load() or {}
         
         # Use provided date or default to today
@@ -194,15 +201,23 @@ async def _register_services(hass: HomeAssistant):
         rate_override = call.data.get("rate_override", "Default")
         custom_rate = call.data.get("custom_rate", "1.0")
         application_date = call.data.get("application_date")
+        zone_entry_id = call.data.get("_zone_entry_id")
 
         chemical = custom.strip() if custom else selected
 
         if not chemical:
             _LOGGER.error("❌ No chemical name provided.")
             return
+            
+        if not zone_entry_id:
+            _LOGGER.error("❌ No zone entry ID provided - cannot determine which zone to update")
+            return
 
-        _LOGGER.info("🔧 log_application called for %s via %s with rate override: %s, custom_rate: %s, date: %s", chemical, method, rate_override, custom_rate, application_date)
+        _LOGGER.info("🔧 log_application called for %s via %s with rate override: %s, custom_rate: %s, date: %s, zone: %s", chemical, method, rate_override, custom_rate, application_date, zone_entry_id)
 
+        # Use zone-specific storage
+        zone_storage_key = get_storage_key(zone_entry_id)
+        store = Store(hass, STORAGE_VERSION, zone_storage_key)
         data = await store.async_load() or {}
         
         # Use provided date or default to today
@@ -235,14 +250,48 @@ async def _register_services(hass: HomeAssistant):
         if "applications" not in data:
             data["applications"] = {}
 
-        # Get default rates
+        # Get zone configuration for lawn size
+        entries = hass.config_entries.async_entries(DOMAIN)
+        zone_config = None
+        for entry in entries:
+            if entry.entry_id == zone_entry_id:
+                zone_config = entry.data
+                break
+                
+        if not zone_config:
+            _LOGGER.error("❌ Zone configuration not found for entry ID: %s", zone_entry_id)
+            return
+            
+        lawn_size_sqft = zone_config.get("lawn_size_sqft", 1000)
+        yard_zone = zone_config.get("yard_zone", "Unknown Zone")
+
+        # Get default rates and determine application method
         if chemical not in CHEMICALS:
             _LOGGER.warning("⚠️ '%s' is not in the predefined chemical list. Logging anyway.", chemical)
             interval = 30
             default_amount_lb = 1.0
+            default_amount_oz = 16.0
+            is_liquid_application = False
         else:
-            interval = CHEMICALS[chemical]["interval_days"]
-            default_amount_lb = CHEMICALS[chemical]["amount_lb_per_1000sqft"]
+            chemical_data = CHEMICALS[chemical]
+            interval = chemical_data["interval_days"]
+            
+            # Determine if this is liquid or granular application based on method and available data
+            is_liquid_application = (method.lower() == "sprayer" and "liquid_oz_per_1000sqft" in chemical_data)
+            
+            if is_liquid_application:
+                # Use liquid application rates
+                default_amount_oz_per_1000 = chemical_data["liquid_oz_per_1000sqft"]
+                default_amount_lb_per_1000 = default_amount_oz_per_1000 / 16.0  # Convert to lb equivalent
+                default_amount_lb = default_amount_lb_per_1000
+                default_amount_oz = default_amount_oz_per_1000
+                _LOGGER.info("🧪 Using LIQUID application: %s oz per 1000 sqft", default_amount_oz_per_1000)
+            else:
+                # Use granular application rates
+                default_amount_lb_per_1000 = chemical_data.get("amount_lb_per_1000sqft", 1.0)
+                default_amount_lb = default_amount_lb_per_1000
+                default_amount_oz = round(default_amount_lb * 16, 2)
+                _LOGGER.info("🌾 Using GRANULAR application: %s lb per 1000 sqft", default_amount_lb_per_1000)
 
         # Calculate actual applied rate based on override
         if rate_override == "Default":
@@ -274,28 +323,54 @@ async def _register_services(hass: HomeAssistant):
             rate_multiplier = 1.0
             rate_description = "Default"
 
-        # Calculate final amounts
-        applied_amount_lb = default_amount_lb * rate_multiplier
-        applied_amount_oz = round(applied_amount_lb * 16, 2)
+        # Calculate final amounts per 1000 sqft based on rate override
+        if is_liquid_application:
+            # For liquid applications, work in ounces
+            applied_amount_oz_per_1000 = default_amount_oz * rate_multiplier
+            applied_amount_lb_per_1000 = applied_amount_oz_per_1000 / 16.0
+            
+            # Calculate total amounts needed for this zone
+            total_chemical_needed_oz = (applied_amount_oz_per_1000 * lawn_size_sqft) / 1000
+            total_chemical_needed_lb = total_chemical_needed_oz / 16.0
+        else:
+            # For granular applications, work in pounds
+            applied_amount_lb_per_1000 = default_amount_lb * rate_multiplier
+            applied_amount_oz_per_1000 = round(applied_amount_lb_per_1000 * 16, 2)
+            
+            # Calculate total amounts needed for this zone
+            total_chemical_needed_lb = (applied_amount_lb_per_1000 * lawn_size_sqft) / 1000
+            total_chemical_needed_oz = total_chemical_needed_lb * 16
         
-        _LOGGER.info("🔍 CALCULATION DEBUG: default_amount_lb=%s, rate_multiplier=%s, applied_amount_lb=%s, applied_amount_oz=%s", 
-                    default_amount_lb, rate_multiplier, applied_amount_lb, applied_amount_oz)
+        _LOGGER.info("🔍 CALCULATION DEBUG: %s application for %s sqft", 
+                    "LIQUID" if is_liquid_application else "GRANULAR", lawn_size_sqft)
+        _LOGGER.info("🔍 Per 1000 sqft: %.3f oz (%.4f lb) at %s rate (%.1fx)", 
+                    applied_amount_oz_per_1000, applied_amount_lb_per_1000, rate_description, rate_multiplier)
+        _LOGGER.info("🔍 Total needed: %.3f oz (%.4f lb)", total_chemical_needed_oz, total_chemical_needed_lb)
 
-        data["applications"][chemical] = {
+        # Store the application data with all calculated amounts
+        application_data = {
             "last_applied": application_date_str,
             "interval_days": interval,
             "default_amount_lb_per_1000sqft": default_amount_lb,
-            "default_amount_oz_per_1000sqft": round(default_amount_lb * 16, 2),
-            "applied_amount_lb_per_1000sqft": applied_amount_lb,
-            "applied_amount_oz_per_1000sqft": applied_amount_oz,
+            "default_amount_oz_per_1000sqft": default_amount_oz,
+            "applied_amount_lb_per_1000sqft": round(applied_amount_lb_per_1000, 4),
+            "applied_amount_oz_per_1000sqft": round(applied_amount_oz_per_1000, 3),
             "rate_multiplier": rate_multiplier,
             "rate_description": rate_description,
             "method": method,
+            "application_type": "liquid" if is_liquid_application else "granular",
+            "lawn_size_sqft": lawn_size_sqft,
+            "total_chemical_needed_oz": round(total_chemical_needed_oz, 3),
+            "total_chemical_needed_lb": round(total_chemical_needed_lb, 4),
+            "yard_zone": yard_zone
         }
+        
+        data["applications"][chemical] = application_data
 
         await store.async_save(data)
         _LOGGER.info("🔍 STORED DATA: %s", data["applications"][chemical])
-        _LOGGER.info("✅ Application logged for %s on %s via %s at %s rate (%.1fx)", chemical, application_date_str, method, rate_description, rate_multiplier)
+        _LOGGER.info("✅ Application logged: %s in %s on %s via %s at %s rate (%.1fx) - %.3f oz needed", 
+                    chemical, yard_zone, application_date_str, method, rate_description, rate_multiplier, total_chemical_needed_oz)
 
         # Notify sensors to update
         async_dispatcher_send(hass, "lawn_manager_update")
@@ -320,8 +395,9 @@ async def _register_services(hass: HomeAssistant):
 
 async def async_remove_entry(hass, entry):
     """Handle removal of a config entry by purging stored data."""
-    # Remove main storage
-    main_store = Store(hass, STORAGE_VERSION, STORAGE_KEY)
+    # Remove zone-specific storage
+    zone_storage_key = get_storage_key(entry.entry_id)
+    main_store = Store(hass, STORAGE_VERSION, zone_storage_key)
     await main_store.async_remove()
     
     # Remove equipment storage
@@ -384,3 +460,4 @@ async def _restore_original_services_yaml(hass: HomeAssistant):
     
     # Run the file operations in executor to avoid blocking
     await hass.async_add_executor_job(_restore_services_file)
+    
