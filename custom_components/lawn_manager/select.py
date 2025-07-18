@@ -22,10 +22,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
     equipment_store = Store(hass, STORAGE_VERSION, EQUIPMENT_STORAGE_KEY)
     equipment_data = await equipment_store.async_load() or {}
     
-    # Create equipment options
-    equipment_options = ["None"]
+    # Create equipment options - put actual equipment first, then None as fallback
+    equipment_options = []
     for eq_id, eq_info in equipment_data.items():
         equipment_options.append(eq_info.get("friendly_name", f"Equipment {eq_id}"))
+    
+    # Add None as fallback option (will only be default if no equipment exists)
+    equipment_options.append("None")
     
     _LOGGER.warning(f"Chemical options: {chemical_options}")
     _LOGGER.warning(f"Method options: {method_options}")
@@ -40,8 +43,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
         LawnRateOverrideSelect(hass, entry, rate_options),
     ]
     
-    # Conditional method/equipment selection
-    if len(equipment_options) > 1:  # More than just "None"
+    # Conditional method/equipment selection  
+    has_actual_equipment = len(equipment_options) > 1 or (len(equipment_options) == 1 and equipment_options[0] != "None")
+    if has_actual_equipment:
         # If equipment is available, use Equipment Selection instead of Application Method
         _LOGGER.warning(f"Equipment available ({len(equipment_options)-1} items), adding Equipment Selection entity")
         entities.append(LawnEquipmentSelect(hass, entry, equipment_options, equipment_data))
