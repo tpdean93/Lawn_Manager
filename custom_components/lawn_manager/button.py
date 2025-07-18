@@ -43,8 +43,10 @@ class LogMowButton(ButtonEntity):
         
         _LOGGER.info("Log Mow using date: %s from entity: %s", application_date_value, application_date_entity)
         
-        # Call the service with the selected date
-        service_data = {}
+        # Call the service with the selected date (include zone info for proper data isolation)
+        service_data = {
+            "_zone_entry_id": self._entry.entry_id  # Add zone context for proper data isolation
+        }
         if application_date_value:
             service_data["application_date"] = application_date_value
         
@@ -147,14 +149,15 @@ class LogChemicalButton(ButtonEntity):
         
         _LOGGER.warning(f"Final chemical to use: {chemical_to_use}")
         
-        # Call the service with the selected values
+        # Call the service with the selected values (include zone info for proper data isolation)
         service_data = {
             "chemical_select": chemical_to_use if selected_chemical != "Custom" else None,
             "custom_chemical": chemical_to_use if selected_chemical == "Custom" else None,
             "method": method,
             "rate_override": rate_override_value,
             "custom_rate": custom_rate_value,
-            "application_date": application_date_value
+            "application_date": application_date_value,
+            "_zone_entry_id": self._entry.entry_id  # Add zone context for proper data isolation
         }
         
         _LOGGER.warning(f"Calling service with data: {service_data}")
