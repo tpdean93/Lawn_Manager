@@ -9,5 +9,5 @@
   "dependencies": [],
   "iot_class": "local_push",
   "platforms": ["sensor", "binary_sensor", "button", "select", "text", "date"],
-  "icon": "images/icon.png"
+  "icon": "logo.png"
 }
