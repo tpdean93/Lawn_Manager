@@ -8,7 +8,7 @@ from homeassistant.helpers.entity import EntityCategory
 from homeassistant.util import dt as dt_util
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 
-from .const import DOMAIN, DEFAULT_MOW_INTERVAL
+from .const import DOMAIN, DEFAULT_MOW_INTERVAL, get_storage_key
 from .weather_helper import WeatherHelper
 
 _LOGGER = logging.getLogger(__name__)
@@ -19,7 +19,7 @@ try:
 except ImportError:
     SEASONAL_AVAILABLE = False
     _LOGGER.warning("Seasonal helper not available - seasonal features disabled")
-STORAGE_KEY = "lawn_manager_data"
+# STORAGE_KEY is now zone-specific - use get_storage_key(entry_id) function
 STORAGE_VERSION = 1
 
 
@@ -34,7 +34,9 @@ class LawnManagerSensorManager:
         self._unsub_dispatcher = None
 
     async def async_setup(self):
-        store = Store(self.hass, STORAGE_VERSION, STORAGE_KEY)
+        # Use zone-specific storage to ensure proper zone isolation
+        zone_storage_key = get_storage_key(self.entry.entry_id)
+        store = Store(self.hass, STORAGE_VERSION, zone_storage_key)
         data = await store.async_load() or {}
         config = self.entry.data
         yard_zone = config.get("yard_zone", "Lawn")
@@ -63,7 +65,7 @@ class LawnManagerSensorManager:
         # Add chemical sensors
         for chem_name, chem_data in data.get("applications", {}).items():
             self.known_chemicals.add(chem_name)
-            sensor = ChemicalApplicationSensor(self.entry.entry_id, chem_name, chem_data, weather_entity)
+            sensor = ChemicalApplicationSensor(self.entry.entry_id, yard_zone, chem_name, chem_data, weather_entity)
             self.chemical_sensors[chem_name] = sensor
             entities.append(sensor)
 
@@ -80,17 +82,21 @@ class LawnManagerSensorManager:
         self._unsub_equipment_dispatcher = async_dispatcher_connect(self.hass, "lawn_manager_equipment_update", self._handle_equipment_update_signal)
 
     async def _handle_update_signal(self):
-        store = Store(self.hass, STORAGE_VERSION, STORAGE_KEY)
+        # Use zone-specific storage to ensure proper zone isolation
+        zone_storage_key = get_storage_key(self.entry.entry_id)
+        store = Store(self.hass, STORAGE_VERSION, zone_storage_key)
         data = await store.async_load() or {}
         current_chems = set(data.get("applications", {}).keys())
         new_chems = current_chems - self.known_chemicals
         removed_chems = self.known_chemicals - current_chems
         new_entities = []
 
-        # Add new chemical sensors
+        # Add new chemical sensors  
+        config = self.entry.data
+        yard_zone = config.get("yard_zone", "Lawn")
         for chem_name in new_chems:
             chem_data = data["applications"][chem_name]
-            sensor = ChemicalApplicationSensor(self.entry.entry_id, chem_name, chem_data, self.mow_sensor._weather_entity if hasattr(self.mow_sensor, '_weather_entity') else None)
+            sensor = ChemicalApplicationSensor(self.entry.entry_id, yard_zone, chem_name, chem_data, self.mow_sensor._weather_entity if hasattr(self.mow_sensor, '_weather_entity') else None)
             self.chemical_sensors[chem_name] = sensor
             new_entities.append(sensor)
 
@@ -319,8 +325,9 @@ class LawnMowDueSensor(SensorEntity):
 
 
 class ChemicalApplicationSensor(SensorEntity):
-    def __init__(self, entry_id, chemical_name, chem_data, weather_entity=None):
+    def __init__(self, entry_id, yard_zone, chemical_name, chem_data, weather_entity=None):
         self._entry_id = entry_id
+        self._yard_zone = yard_zone
         self._chemical_name = chemical_name
         self._last_applied = chem_data.get("last_applied")
         self._interval_days = chem_data.get("interval_days", 30)
@@ -365,9 +372,11 @@ class ChemicalApplicationSensor(SensorEntity):
     async def async_update(self):
         # Reload data from storage to get latest chemical data
         from homeassistant.helpers.storage import Store
-        from .const import STORAGE_VERSION, STORAGE_KEY
+        from .const import STORAGE_VERSION
         
-        store = Store(self.hass, STORAGE_VERSION, STORAGE_KEY)
+        # Use zone-specific storage
+        zone_storage_key = get_storage_key(self._entry_id)
+        store = Store(self.hass, STORAGE_VERSION, zone_storage_key)
         data = await store.async_load() or {}
         
         # Update chemical data from storage
@@ -401,13 +410,13 @@ class ChemicalApplicationSensor(SensorEntity):
     @property
     def name(self):
         if self._state is None:
-            return f"{self._chemical_name} Application"
+            return f"{self._yard_zone} {self._chemical_name} Application"
         elif self._state == 0:
-            return f"{self._chemical_name} (Applied Today)"
+            return f"{self._yard_zone} {self._chemical_name} (Applied Today)"
         elif self._state == 1:
-            return f"{self._chemical_name} (Applied Yesterday)"
+            return f"{self._yard_zone} {self._chemical_name} (Applied Yesterday)"
         else:
-            return f"{self._chemical_name} ({self._state} Days Ago)"
+            return f"{self._yard_zone} {self._chemical_name} ({self._state} Days Ago)"
 
     @property
     def state(self):
@@ -509,9 +518,11 @@ class LawnSeasonalSensor(SensorEntity):
     async def async_update(self):
         # Load application history for smart recommendations
         from homeassistant.helpers.storage import Store
-        from .const import STORAGE_VERSION, STORAGE_KEY
+        from .const import STORAGE_VERSION
         
-        store = Store(self.hass, STORAGE_VERSION, STORAGE_KEY)
+        # Use zone-specific storage
+        zone_storage_key = get_storage_key(self._entry_id)
+        store = Store(self.hass, STORAGE_VERSION, zone_storage_key)
         data = await store.async_load() or {}
         self._application_history = data.get("applications", {})
 
