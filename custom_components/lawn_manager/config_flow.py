@@ -4,7 +4,7 @@ from homeassistant.data_entry_flow import FlowResult
 from homeassistant.helpers.storage import Store
 import uuid
 
-from .const import DOMAIN, GRASS_TYPE_LIST, EQUIPMENT_TYPES, EQUIPMENT_BRANDS, CAPACITY_UNITS
+from .const import DOMAIN, GRASS_TYPE_LIST, EQUIPMENT_TYPES, EQUIPMENT_BRANDS, CAPACITY_UNITS, STORAGE_VERSION, EQUIPMENT_STORAGE_KEY
 
 
 class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
@@ -67,6 +67,10 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     async def async_step_equipment(self, user_input=None) -> FlowResult:
         """Handle equipment collection step."""
         errors = {}
+        
+        # Check if equipment already exists (from other zones)
+        equipment_store = Store(self.hass, STORAGE_VERSION, EQUIPMENT_STORAGE_KEY)
+        existing_equipment = await equipment_store.async_load() or {}
 
         if user_input is not None:
             action = user_input.get("action")
@@ -119,7 +123,16 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         })
 
         # Create description showing current equipment
-        equipment_list_text = "Current Equipment:\n"
+        equipment_list_text = ""
+        
+        # Show existing equipment from other zones if any
+        if existing_equipment:
+            equipment_list_text += "🔧 Equipment Available (shared across ALL zones):\n"
+            for eq_id, eq_info in existing_equipment.items():
+                equipment_list_text += f"• {eq_info.get('friendly_name', f'Equipment {eq_id}')}\n"
+            equipment_list_text += "\n💡 TIP: Equipment is shared across all lawn zones. You can skip adding equipment and use what's already available!\n\n"
+        
+        equipment_list_text += "📦 Equipment being added in this setup:\n"
         if self.equipment_list:
             for eq in self.equipment_list:
                 equipment_list_text += f"• {eq['friendly_name']}\n"
@@ -127,7 +140,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             equipment_list_text += "• None added yet\n"
         
         equipment_list_text += "\n📝 To add equipment: Fill out all fields above, then select 'Add this equipment'\n"
-        equipment_list_text += "⏭️  To skip: Just select 'Skip adding equipment' (leave other fields empty)"
+        equipment_list_text += "⏭️  To skip: Just select 'Skip adding equipment' (use existing equipment or add later)"
 
         return self.async_show_form(
             step_id="equipment",
