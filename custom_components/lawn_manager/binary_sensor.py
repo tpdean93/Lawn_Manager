@@ -5,7 +5,7 @@ from homeassistant.util import dt as dt_util
 import logging
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 
-from .const import DOMAIN, DEFAULT_MOW_INTERVAL
+from .const import DOMAIN, DEFAULT_MOW_INTERVAL, get_storage_key
 
 _LOGGER = logging.getLogger(__name__)
 STORAGE_KEY = "lawn_manager_data"
@@ -16,16 +16,19 @@ async def async_setup_entry(hass, entry, async_add_entities):
     name = entry.data.get("name")
     mow_interval = entry.data.get("mow_interval", 7)
 
-    sensor = LawnDueSensor(name, mow_interval, hass)
+    sensor = LawnDueSensor(entry, name, mow_interval, hass)
     async_add_entities([sensor], update_before_add=True)
 
 
 class LawnDueSensor(BinarySensorEntity):
-    def __init__(self, name, mow_interval, hass):
+    def __init__(self, entry, name, mow_interval, hass):
+        self._entry = entry
         self._attr_name = f"{name} Needs Mowing"
         self._mow_interval = mow_interval
         self._last_mow = None
-        self._store = Store(hass, STORAGE_VERSION, STORAGE_KEY)
+        # Use zone-specific storage
+        zone_storage_key = get_storage_key(entry.entry_id)
+        self._store = Store(hass, STORAGE_VERSION, zone_storage_key)
         self._unsub_dispatcher = None
 
     async def async_added_to_hass(self):
