@@ -1,7 +1,9 @@
 ![Lawn Manager Banner](./banner.png)
+
+![Lawn Manager Banner](./banner.png)
 # Lawn Manager - Home Assistant Integration
 
-A comprehensive Home Assistant integration for intelligent lawn care management with **professional-grade chemical calculations**, **equipment management**, and **smart notifications**.
+A comprehensive Home Assistant integration for intelligent lawn care management with **professional-grade chemical calculations**, **multi-zone tracking**, **equipment management**, and **smart notifications**. Now with **perfect zone isolation** and **enhanced chemical calculations** for liquid and granular applications!
 
 ## 🚀 Quick Installation
 
@@ -25,6 +27,26 @@ A comprehensive Home Assistant integration for intelligent lawn care management 
 3. Restart Home Assistant
 4. Add the integration via Settings → Devices & Services
 
+## 🆕 Latest Updates (v1.0.1+)
+
+### 🎯 Perfect Multi-Zone Support
+- **Zone Isolation**: Front Yard and Back Yard now have completely separate data storage
+- **Zone-Specific Sensors**: Chemical sensors show zone names (e.g., "Front Yard T-Nex (Applied Today)")
+- **Independent Tracking**: Chemical applications logged in one zone don't appear in other zones
+- **Shared Equipment**: Equipment inventory shared across all zones for convenience
+
+### 🧪 Enhanced Chemical Calculations
+- **Liquid vs Granular Detection**: Automatically detects application type based on equipment and chemical data
+- **Accurate Chemical Rates**: Fixed T-Nex, Disease Preventer, Insecticide, and Soil Conditioner calculations
+- **Method-Specific Calculations**: Liquid rates for sprayers, granular rates for spreaders
+- **Rich Sensor Data**: Sensors now show total amounts needed, application type, and zone information
+
+### 🔧 Equipment & UI Improvements
+- **Smart Equipment Defaults**: Equipment Selection now defaults to actual equipment instead of "None"
+- **Multi-Zone Configuration**: Clear messaging that equipment is shared across all zones
+- **Integration Icon**: Custom logo now displays properly in Home Assistant integrations list
+- **Enhanced Logging**: Better debugging and calculation visibility
+
 ## 🌟 Major Features
 
 ### 🧪 Professional Chemical Calculations
@@ -39,6 +61,8 @@ A comprehensive Home Assistant integration for intelligent lawn care management 
 - **Equipment Inventory**: Track sprayers, spreaders, and their capacities
 - **Dynamic Dropdowns**: Equipment selection in services updates automatically
 - **Smart Entity Creation**: Application Method entity intelligently switches to Equipment Selection
+- **Smart Defaults**: Equipment Selection now defaults to your actual equipment, not "None"
+- **Multi-Zone Friendly**: Clear guidance that equipment is shared across all lawn zones
 
 ### 📊 Smart Tracking & Intelligence
 - **Mowing Tracking**: Track last mow date and due dates with customizable intervals
@@ -90,17 +114,26 @@ A comprehensive Home Assistant integration for intelligent lawn care management 
 
 ## 🧪 Chemical Application Calculator
 
-### Professional-Grade Calculations
-The integration now provides **accurate, manufacturer-based** application rates:
+### Professional-Grade Calculations with Smart Detection
+The integration provides **accurate, manufacturer-based** application rates with **automatic liquid vs granular detection**:
 
-| Chemical | Rate | Notes |
-|----------|------|-------|
-| **Fertilizer 10-10-10** | 10 lbs per 1,000 sq ft | 10% nitrogen - apply via spreader |
-| **T-Nex / PGR** | 0.375 oz per 1,000 sq ft | 0.25 oz per gallon water |
-| **Weed Preventer** | 3.5 lbs granular or 0.185 oz liquid | Pre-emergent timing critical |
-| **Iron Supplement** | 2 oz per 1,000 sq ft | 2 oz per gallon water |
-| **Disease Preventer** | 1.5 oz per 1,000 sq ft | Temperature sensitive |
-| **Insecticide** | 0.75 oz per 1,000 sq ft | Broad spectrum control |
+| Chemical | Liquid Rate (Sprayer) | Granular Rate (Spreader) | Notes |
+|----------|----------------------|-------------------------|-------|
+| **Fertilizer 10-10-10** | - | 10 lbs per 1,000 sq ft | 10% nitrogen - granular only |
+| **T-Nex / PGR** | 0.375 oz per 1,000 sq ft | - | Liquid only - 0.25 oz per gallon water |
+| **Weed Preventer** | 0.185 oz per 1,000 sq ft | 3.5 lbs per 1,000 sq ft | Pre-emergent timing critical |
+| **Iron Supplement** | 2 oz per 1,000 sq ft | 0.75 lbs per 1,000 sq ft | 2 oz per gallon water for liquid |
+| **Disease Preventer** | 1.5 oz per 1,000 sq ft | - | Liquid only - temperature sensitive |
+| **Insecticide** | 0.75 oz per 1,000 sq ft | 3.0 lbs per 1,000 sq ft | Broad spectrum control |
+| **Soil Conditioner** | 3.0 oz per 1,000 sq ft | 2.0 lbs per 1,000 sq ft | Humic acid - improves soil structure |
+| **Urea** | - | 1.6 lbs per 1,000 sq ft | 46-0-0 nitrogen - granular only |
+| **Grub Killer** | - | 3.0 lbs per 1,000 sq ft | Curative treatment - granular only |
+
+### 🤖 Smart Application Detection
+- **Sprayer + Liquid Data Available** = Liquid application with oz/1000 sqft rates
+- **Spreader Selected** = Granular application with lb/1000 sqft rates  
+- **Dual-Rate Chemicals** = Automatically chooses correct rate based on equipment
+- **Enhanced Sensor Data** = Shows application type, total amounts needed, and zone information
 
 ### 🥄 Kitchen Measurements
 Get mixing instructions in **kitchen-friendly measurements**:
@@ -265,12 +298,23 @@ Attributes:
   friendly_name: "Ryobi 4 Gallon Sprayer"
 ```
 
-### Chemical Application Sensor
+### Chemical Application Sensor (Enhanced with Zone Names)
 ```yaml
-State: 45  # Days since last application
+Name: "Front Yard T-Nex (Applied Today)"
+State: 0  # Days since last application
 Attributes:
-  last_applied: "2024-01-01"
-  next_due: "2024-01-31"
+  last_applied: "2025-01-17"
+  next_due: "2025-02-10"
+  interval_days: 24
+  default_amount_oz_per_1000sqft: 0.375
+  applied_amount_oz_per_1000sqft: 0.563  # Heavy rate (150%)
+  rate_multiplier: 1.5
+  rate_description: "Heavy (150%)"
+  method: "Sprayer"
+  application_type: "liquid"
+  lawn_size_sqft: 3000
+  total_chemical_needed_oz: 1.688
+  yard_zone: "Front Yard"
   weather_suitable_for_application: true
   weather_recommendation: "Perfect conditions - no rain expected"
 ```
@@ -320,7 +364,7 @@ A: The brand field is now a text input - you can enter any brand name (John Deer
 A: Yes, after the initial setup to enable dynamic dropdowns. The config flow will remind you.
 
 **Q: Can I track multiple lawn areas?**
-A: Each integration instance tracks one lawn area. Add multiple instances for different areas (front yard, back yard, etc.).
+A: Yes! Each integration instance tracks one lawn area with complete data isolation. Add multiple instances for different areas (front yard, back yard, etc.). Chemical applications in one zone won't appear in other zones.
 
 **Q: What if I don't know my grass type?**
 A: The integration defaults to Bermuda grass. You can change it later in the configuration.
@@ -328,13 +372,23 @@ A: The integration defaults to Bermuda grass. You can change it later in the con
 **Q: How do I get the mixing instructions?**
 A: Use the `calculate_application_rate` service with your chemical, equipment, and zone. You'll get professional mixing instructions with kitchen measurements.
 
+**Q: How does equipment work with multiple zones?**
+A: Equipment is shared across ALL zones for convenience - you don't need to add equipment for each zone. However, chemical applications are tracked separately per zone, so T-Nex applied in the Front Yard won't show up in Back Yard sensors.
+
+**Q: Why are my chemical calculations showing zeros?**
+A: The integration now automatically detects liquid vs granular applications. Make sure you're using the right equipment type (Sprayer for liquids, Spreader for granular) and the chemical supports that application method.
+
 ## 🐛 Troubleshooting
 
 ### Common Issues
 - **Equipment Not Showing**: Reload integration after adding equipment
+- **Equipment Defaults to "None"**: This has been fixed - equipment now defaults to your actual equipment
+- **Chemical Applications Cross-Contaminating Zones**: This has been fixed - each zone now has completely separate data storage
+- **T-Nex/Disease Preventer Showing Zero Amounts**: This has been fixed - liquid chemicals now calculate properly
 - **Calculate Rates Not Working**: Ensure you've selected equipment from dropdown
 - **Kitchen Measurements Missing**: Check that chemical has liquid rates defined
 - **Services Not Updating**: Restart Home Assistant after initial setup
+- **Integration Icon Not Showing**: Restart Home Assistant after installation
 
 ### Logs
 Check Home Assistant logs for:
@@ -372,4 +426,14 @@ This project is licensed under the MIT License.
 
 ---
 
-**Professional lawn care made simple with Home Assistant intelligence!** 🌱 
+**Professional lawn care made simple with Home Assistant intelligence!** 🌱
+
+### 🏆 Recent Major Improvements
+- ✅ **Perfect Zone Isolation** - Front/Back Yard data completely separate
+- ✅ **Enhanced Chemical Calculations** - Liquid vs granular auto-detection  
+- ✅ **Smart Equipment Defaults** - No more "None" selections
+- ✅ **Zone-Named Sensors** - Clear identification of which zone each sensor belongs to
+- ✅ **Rich Application Data** - Total amounts needed, application type, and comprehensive tracking
+- ✅ **Multi-Zone Friendly Config** - Clear guidance on equipment sharing
+
+Ready for production use with professional-grade lawn care tracking! 🚀 
