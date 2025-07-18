@@ -5,7 +5,7 @@ from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 import uuid
 
-from .const import DOMAIN, STORAGE_KEY, STORAGE_VERSION, CHEMICALS, EQUIPMENT_STORAGE_KEY, EQUIPMENT_TYPES
+from .const import DOMAIN, STORAGE_VERSION, CHEMICALS, EQUIPMENT_STORAGE_KEY, EQUIPMENT_TYPES
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -42,48 +42,11 @@ def _convert_oz_to_kitchen_measurements(oz):
 
 async def async_register_services(hass: HomeAssistant) -> None:
     """Register Lawn Manager services."""
-    store = Store(hass, STORAGE_VERSION, STORAGE_KEY)
+    # Note: Zone-specific storage is now created per service call
     equipment_store = Store(hass, STORAGE_VERSION, EQUIPMENT_STORAGE_KEY)
 
-    async def handle_log_mow(call: ServiceCall):
-        """Handle log_mow service."""
-        _LOGGER.info("🔧 log_mow called")
-        data = await store.async_load() or {}
-        now = dt_util.now().strftime("%Y-%m-%d")
-        data["last_mow"] = now
-        await store.async_save(data)
-        _LOGGER.info("✅ Mow logged: %s", now)
-
-    async def handle_log_application(call: ServiceCall):
-        """Handle log_application service."""
-        chemical = call.data.get("chemical")
-        _LOGGER.info("🔧 log_application called for %s", chemical)
-
-        data = await store.async_load() or {}
-        now = dt_util.now().strftime("%Y-%m-%d")
-
-        if "applications" not in data:
-            data["applications"] = {}
-
-        if chemical not in CHEMICALS:
-            _LOGGER.warning("⚠️ Chemical '%s' not recognized — defaulting", chemical)
-            interval = 30
-            amount_lb = 1.0
-            amount_oz = 16.0
-        else:
-            interval = CHEMICALS[chemical]["interval_days"]
-            amount_lb = CHEMICALS[chemical]["amount_lb_per_1000sqft"]
-            amount_oz = round(amount_lb * 16, 2)
-
-        data["applications"][chemical] = {
-            "last_applied": now,
-            "interval_days": interval,
-            "amount_lb_per_1000sqft": amount_lb,
-            "amount_oz_per_1000sqft": amount_oz
-        }
-
-        await store.async_save(data)
-        _LOGGER.info("✅ Application logged for %s on %s", chemical, now)
+    # Note: log_mow and log_application services are now handled in __init__.py 
+    # with proper zone-specific storage. These duplicate handlers have been removed.
 
     async def handle_add_equipment(call: ServiceCall):
         """Add new equipment to inventory."""
