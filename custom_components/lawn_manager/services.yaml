@@ -183,4 +183,5 @@ calculate_application_rate:
         select:
           options:
           - Front Yard
+          - Back Yard
           custom_value: true
