@@ -1,13 +1,48 @@
-log_mow:
-  name: Log Mowing
-  description: Log the most recent mowing event for your lawn.
+log_lawn_activity:
+  name: Log Lawn Activity
+  description: Log lawn maintenance activities including mowing, aeration, dethatching,
+    and more.
   fields:
+    zone:
+      name: Zone
+      description: Select the zone to update
+      required: true
+      selector:
+        config_entry:
+          integration: lawn_manager
     application_date:
-      name: Mow Date
-      description: Date when the lawn was mowed (defaults to today if not specified)
+      name: Activity Date
+      description: Date when the lawn activity was performed (defaults to today if
+        not specified)
       required: false
       selector:
         date: null
+    cut_type:
+      name: Activity Type
+      description: Type of lawn maintenance activity performed
+      required: false
+      default: Regular Maintenance
+      selector:
+        select:
+          options:
+          - Regular Maintenance
+          - Scalp
+          - First Cut of Season
+          - Pre-Winter Cut
+          - HOC Reset
+          - Aerate
+          - Dethatch
+    height_of_cut:
+      name: Height of Cut (HOC)
+      description: 'Mowing height in inches (only applies to mowing activities: e.g.,
+        2.5, 3.0, 0.125 for scalp)'
+      required: false
+      selector:
+        number:
+          min: 0.125
+          max: 6.0
+          step: 0.125
+          unit_of_measurement: inches
 log_application:
   name: Log Chemical Application
   description: Logs a chemical application to track usage and scheduling.
@@ -183,5 +218,4 @@ calculate_application_rate:
         select:
           options:
           - Front Yard
-          - Back Yard
           custom_value: true
