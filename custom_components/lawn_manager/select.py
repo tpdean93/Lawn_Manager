@@ -10,7 +10,16 @@ from .const import STORAGE_VERSION, EQUIPMENT_STORAGE_KEY
 _LOGGER = logging.getLogger(__name__)
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities):
-    _LOGGER.warning("Setting up Lawn Manager select entities - DEBUG")
+    """Set up select entities for Lawn Manager."""
+    _LOGGER.warning(f"🔍 Setting up Lawn Manager select entities for entry {entry.entry_id} - DEBUG")
+    
+    # Check if entities already exist
+    existing_entities = []
+    for state in hass.states.async_all():
+        if entry.entry_id in state.entity_id and state.entity_id.startswith("select."):
+            existing_entities.append(state.entity_id)
+    
+    _LOGGER.warning(f"🔍 Found existing select entities: {existing_entities}")
     
     # Get chemical options from CHEMICALS constant
     chemical_options = list(CHEMICALS.keys()) + ["Custom"]
@@ -37,11 +46,29 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
     # Rate override options
     rate_options = ["Default", "Light (50%)", "Heavy (150%)", "Extra Heavy (200%)", "Custom"]
     
+    # Cut type options for mowing
+    cut_type_options = ["Regular Maintenance", "Scalp", "First Cut of Season", "Pre-Winter Cut", "HOC Reset", "Aerate", "Dethatch"]
+    
     # Base entities (always created)
-    entities = [
+    entities = []
+    
+    # Create activity type select first
+    activity_type_select = LawnCutTypeSelect(hass, entry, cut_type_options)
+    _LOGGER.warning(f"🔍 Creating activity type select: {activity_type_select._attr_unique_id}")
+    entities.append(activity_type_select)
+    
+    # Create other entities
+    entities.extend([
         LawnChemicalSelect(hass, entry, chemical_options),
         LawnRateOverrideSelect(hass, entry, rate_options),
-    ]
+    ])
+    
+    # Log all entity IDs for debugging
+    for entity in entities:
+        _LOGGER.warning(f"🔍 Created entity: {entity._attr_unique_id} ({entity._attr_name})")
+        # Check if entity already exists in states
+        existing_state = hass.states.get(f"select.lawn_manager_{entity._attr_unique_id}")
+        _LOGGER.warning(f"✓ Entity state exists: {existing_state is not None}")
     
     # Conditional method/equipment selection  
     has_actual_equipment = len(equipment_options) > 1 or (len(equipment_options) == 1 and equipment_options[0] != "None")
@@ -61,12 +88,13 @@ class LawnChemicalSelect(SelectEntity):
     def __init__(self, hass, entry, options):
         self._hass = hass
         self._entry = entry
-        self._attr_name = "Chemical Selection"
-        self._attr_unique_id = f"{entry.entry_id}_chemical_select"
+        self._attr_name = "🧪 Chemical Selection"
+        self._attr_unique_id = f"{entry.entry_id}_chemical_selection"
         _LOGGER.warning(f"Creating chemical select entity with unique_id: {self._attr_unique_id}")
         self._attr_options = options
         self._attr_current_option = options[0]  # Default to first option
         self._attr_icon = "mdi:flask-outline"
+        self._attr_entity_category = None  # Main control
 
     @property
     def device_info(self):
@@ -85,8 +113,8 @@ class LawnRateOverrideSelect(SelectEntity):
     def __init__(self, hass, entry, options):
         self._hass = hass
         self._entry = entry
-        self._attr_name = "Application Rate"
-        self._attr_unique_id = f"{entry.entry_id}_rate_override"
+        self._attr_name = "🧪 Application Rate"
+        self._attr_unique_id = f"{entry.entry_id}_application_rate"
         self._attr_options = options
         self._attr_current_option = options[0]  # Default to "Default"
         self._attr_icon = "mdi:gauge"
@@ -206,5 +234,42 @@ class LawnEquipmentSelect(SelectEntity):
 
     async def async_select_option(self, option: str) -> None:
         """Select new equipment option."""
+        self._attr_current_option = option
+        self.async_write_ha_state() 
+
+class LawnCutTypeSelect(SelectEntity):
+    """Select entity for choosing cut type."""
+    
+    def __init__(self, hass, entry, options):
+        self._hass = hass
+        self._entry = entry
+        self._attr_name = "🌿 Activity Type Selection"
+        self._attr_unique_id = f"{entry.entry_id}_activity_type_selection"
+        self._attr_options = options
+        self._attr_current_option = options[0]  # Default to "Regular Maintenance"
+        self._attr_icon = "mdi:content-cut"
+        self._attr_entity_category = None  # Main control
+
+    @property
+    def device_info(self):
+        return {
+            "identifiers": {(DOMAIN, self._entry.entry_id)},
+            "name": "Lawn Manager",
+            "manufacturer": "Custom Integration",
+        }
+
+    @property
+    def extra_state_attributes(self):
+        return {
+            "help": "Select the type of lawn activity being performed",
+            "scalp_note": "Scalp = Very low cut to remove thatch",
+            "maintenance_note": "Regular Maintenance = Normal weekly mowing",
+            "hoc_reset_note": "HOC Reset = Adjusting mower height settings",
+            "aerate_note": "Aerate = Core aeration to improve soil compaction",
+            "dethatch_note": "Dethatch = Removing thatch buildup from lawn"
+        }
+
+    async def async_select_option(self, option: str) -> None:
+        """Select new cut type option."""
         self._attr_current_option = option
         self.async_write_ha_state() 
