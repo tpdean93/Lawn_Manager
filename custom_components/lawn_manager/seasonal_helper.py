@@ -15,8 +15,20 @@ class SeasonalHelper:
         self.grass_type = grass_type
         self.location = location
         self.weather_entity = weather_entity
-        self.grass_info = GRASS_TYPES.get(grass_type, GRASS_TYPES["Bermuda"])
-        self.season_type = self.grass_info["season"]  # "warm" or "cool"
+        
+        # Handle custom grass types
+        if grass_type.startswith("Custom:"):
+            # Extract season from custom grass type string
+            if "warm" in grass_type.lower():
+                self.grass_info = {"season": "warm", "peak_months": [5, 6, 7, 8, 9], "dormant_months": [11, 12, 1, 2]}
+            elif "cool" in grass_type.lower():
+                self.grass_info = {"season": "cool", "peak_months": [3, 4, 5, 9, 10, 11], "dormant_months": [7, 8]}
+            else:  # transition zone
+                self.grass_info = {"season": "transition", "peak_months": [4, 5, 6, 9, 10], "dormant_months": [1, 2, 7, 8]}
+        else:
+            self.grass_info = GRASS_TYPES.get(grass_type, GRASS_TYPES["Bermuda"])
+        
+        self.season_type = self.grass_info["season"]  # "warm", "cool", or "transition"
 
     def get_current_season(self) -> str:
         """Get current season based on calendar."""
