@@ -1,5 +1,8 @@
 DOMAIN = "lawn_manager"
 
+# Platforms
+PLATFORMS = ["sensor", "binary_sensor", "button", "select", "text", "date", "number"]
+
 CONF_NAME = "name"
 CONF_LOCATION = "location"
 CONF_GRASS_TYPE = "grass_type"
@@ -27,6 +30,7 @@ GRASS_TYPES = {
     "Kentucky Bluegrass": {"season": "cool", "peak_months": [3, 4, 5, 9, 10, 11], "dormant_months": [7, 8]},
     "Ryegrass": {"season": "cool", "peak_months": [3, 4, 5, 9, 10, 11], "dormant_months": [7, 8]},
     "Fine Fescue": {"season": "cool", "peak_months": [3, 4, 5, 9, 10, 11], "dormant_months": [7, 8]},
+    "Custom": {"season": "unknown", "peak_months": [], "dormant_months": []},  # Placeholder for custom grass
 }
 
 # For backward compatibility
@@ -64,7 +68,9 @@ CHEMICALS = {
     "Urea": {
         "interval_days": 30,
         "amount_lb_per_1000sqft": 1.6,  # 1-2.2 lbs for 0.5-1 lb N (46% N)
-        "notes": "46-0-0 nitrogen - 2.2 lbs Urea = 1 lb nitrogen"
+        "liquid_oz_per_1000sqft": 1.2,  # 1-1.5 oz liquid urea per 1,000 sq ft (dissolved in water)
+        "water_gal_per_1000sqft": 1.0,  # 1 gallon water per 1,000 sq ft
+        "notes": "46-0-0 nitrogen - 2.2 lbs Urea = 1 lb nitrogen. Can be applied granular or dissolved in water for liquid application"
     },
     "T-Nex / PGR": {
         "interval_days": 24,  # Every 3-4 weeks
