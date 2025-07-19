@@ -28,6 +28,11 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 "weather_entity": user_input.get("weather_entity"),
                 "grass_type": user_input.get("grass_type", "Bermuda"),
             }
+            
+            # Check if custom grass type was selected
+            if self.user_data["grass_type"] == "Custom":
+                return await self.async_step_custom_grass()
+            
             # Move to equipment collection step
             return await self.async_step_equipment()
 
@@ -61,6 +66,39 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             errors=errors,
             description_placeholders={
                 "step": "Step 1 of 3: Basic Configuration"
+            }
+        )
+
+    async def async_step_custom_grass(self, user_input=None) -> FlowResult:
+        """Handle custom grass type configuration."""
+        errors = {}
+
+        if user_input is not None:
+            # Store custom grass information
+            self.user_data["custom_grass_name"] = user_input["custom_grass_name"]
+            self.user_data["custom_grass_season"] = user_input["custom_grass_season"]
+            
+            # Update grass_type to include custom name and season
+            self.user_data["grass_type"] = f"Custom: {user_input['custom_grass_name']} ({user_input['custom_grass_season']})"
+            
+            # Move to equipment collection step
+            return await self.async_step_equipment()
+
+        data_schema = vol.Schema({
+            vol.Required("custom_grass_name"): str,
+            vol.Required("custom_grass_season"): vol.In({
+                "warm": "Warm Season",
+                "cool": "Cool Season",
+                "transition": "Transition Zone (Both)"
+            })
+        })
+
+        return self.async_show_form(
+            step_id="custom_grass",
+            data_schema=data_schema,
+            errors=errors,
+            description_placeholders={
+                "example": "Examples: Kikuyu, Buffalo Grass, Seashore Paspalum, etc."
             }
         )
 
