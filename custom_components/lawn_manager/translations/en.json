@@ -1,0 +1,49 @@
+{
+    "config": {
+      "step": {
+        "user": {
+          "title": "Lawn Manager Setup",
+          "description": "Configure your lawn care settings",
+          "data": {
+            "yard_zone": "Zone Name",
+            "location": "Location",
+            "mow_interval": "Mowing Interval (days)",
+            "lawn_size_sqft": "Lawn Size (sq ft)",
+            "grass_type": "Grass Type",
+            "weather_entity": "Weather Entity"
+          }
+        },
+        "custom_grass": {
+          "title": "Custom Grass Type",
+          "description": "Enter your custom grass type details. {example}",
+          "data": {
+            "custom_grass_name": "Grass Name",
+            "custom_grass_season": "Season Type"
+          }
+        },
+        "equipment": {
+          "title": "Equipment Setup",
+          "description": "Add your lawn care equipment (optional). You can add more equipment later.",
+          "data": {
+            "add_equipment": "Add Equipment?"
+          }
+        },
+        "add_equipment": {
+          "title": "Add Equipment",
+          "description": "Enter equipment details",
+          "data": {
+            "equipment_type": "Equipment Type",
+            "brand": "Brand",
+            "capacity": "Capacity",
+            "capacity_unit": "Capacity Unit"
+          }
+        }
+      },
+      "error": {
+        "unknown": "Unknown error occurred"
+      },
+      "abort": {
+        "already_configured": "Zone already configured"
+      }
+    }
+  } 
