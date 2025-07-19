@@ -34,14 +34,20 @@ class LawnManagerSensorManager:
         self._unsub_dispatcher = None
 
     async def async_setup(self):
-        # Use zone-specific storage to ensure proper zone isolation
-        zone_storage_key = get_storage_key(self.entry.entry_id)
-        store = Store(self.hass, STORAGE_VERSION, zone_storage_key)
-        data = await store.async_load() or {}
-        config = self.entry.data
-        yard_zone = config.get("yard_zone", "Lawn")
-        location = config.get("location", "Unknown")
-        mow_interval = config.get("mow_interval", DEFAULT_MOW_INTERVAL)
+        """Set up the sensor manager and create all required entities."""
+        try:
+            # Use zone-specific storage to ensure proper zone isolation
+            zone_storage_key = get_storage_key(self.entry.entry_id)
+            store = Store(self.hass, STORAGE_VERSION, zone_storage_key)
+            data = await store.async_load() or {}
+            config = self.entry.data
+            yard_zone = config.get("yard_zone", "Lawn")
+            location = config.get("location", "Unknown")
+            mow_interval = config.get("mow_interval", DEFAULT_MOW_INTERVAL)
+            _LOGGER.info("🔧 Initializing sensors for zone: %s", yard_zone)
+        except Exception as err:
+            _LOGGER.error("❌ Failed to initialize storage for zone %s: %s", self.entry.entry_id, err)
+            raise
 
         # Get weather entity and grass type from config
         weather_entity = config.get("weather_entity")
@@ -63,7 +69,17 @@ class LawnManagerSensorManager:
             entities.append(self.seasonal_sensor)
 
         # Add chemical sensors
-        for chem_name, chem_data in data.get("applications", {}).items():
+        applications = data.get("applications", {})
+        if isinstance(applications, list):
+            # Convert old list format to dictionary
+            _LOGGER.warning("Converting old applications list format to dictionary")
+            applications = {app.get("chemical_name", f"Chemical {i}"): app 
+                          for i, app in enumerate(applications) if isinstance(app, dict)}
+            # Save converted format
+            data["applications"] = applications
+            await store.async_save(data)
+        
+        for chem_name, chem_data in applications.items():
             self.known_chemicals.add(chem_name)
             sensor = ChemicalApplicationSensor(self.entry.entry_id, yard_zone, chem_name, chem_data, weather_entity)
             self.chemical_sensors[chem_name] = sensor
@@ -73,37 +89,61 @@ class LawnManagerSensorManager:
         self.equipment_sensor = EquipmentInventorySensor(self.entry.entry_id, yard_zone, location)
         entities.append(self.equipment_sensor)
 
-        self.async_add_entities(entities, update_before_add=True)
+        _LOGGER.warning(f"🔧 Creating {len(entities)} sensors for {yard_zone}")
+        for entity in entities:
+            _LOGGER.warning(f"  - {entity.__class__.__name__}: {getattr(entity, '_attr_name', 'Unknown')}")
+        
+        self.async_add_entities(entities, update_before_add=False)
+        _LOGGER.warning(f"✅ Sensors added successfully for {yard_zone}")
 
         # Listen for updates
-        self._unsub_dispatcher = async_dispatcher_connect(self.hass, "lawn_manager_update", self._handle_update_signal)
+        signal_name = f"lawn_manager_update_{self.entry.entry_id}"
+        self._unsub_dispatcher = async_dispatcher_connect(self.hass, signal_name, self._handle_update_signal)
         
         # Listen for equipment updates
         self._unsub_equipment_dispatcher = async_dispatcher_connect(self.hass, "lawn_manager_equipment_update", self._handle_equipment_update_signal)
 
     async def _handle_update_signal(self):
+        """Handle update signal - check for new chemicals and update existing sensors."""
         # Use zone-specific storage to ensure proper zone isolation
         zone_storage_key = get_storage_key(self.entry.entry_id)
         store = Store(self.hass, STORAGE_VERSION, zone_storage_key)
         data = await store.async_load() or {}
+        
+        # Get current chemicals from storage
         current_chems = set(data.get("applications", {}).keys())
         new_chems = current_chems - self.known_chemicals
-        removed_chems = self.known_chemicals - current_chems
-        new_entities = []
-
-        # Add new chemical sensors  
-        config = self.entry.data
-        yard_zone = config.get("yard_zone", "Lawn")
-        for chem_name in new_chems:
-            chem_data = data["applications"][chem_name]
-            sensor = ChemicalApplicationSensor(self.entry.entry_id, yard_zone, chem_name, chem_data, self.mow_sensor._weather_entity if hasattr(self.mow_sensor, '_weather_entity') else None)
-            self.chemical_sensors[chem_name] = sensor
-            new_entities.append(sensor)
-
-        if new_entities:
-            self.async_add_entities(new_entities, update_before_add=True)
-
-        self.known_chemicals = current_chems
+        
+        if new_chems:
+            _LOGGER.info("🔧 Found new chemicals to add: %s", new_chems)
+            new_entities = []
+            config = self.entry.data
+            yard_zone = config.get("yard_zone", "Lawn")
+            
+            # Create new sensors for new chemicals
+            for chem_name in new_chems:
+                chem_data = data["applications"][chem_name]
+                sensor = ChemicalApplicationSensor(
+                    self.entry.entry_id, 
+                    yard_zone, 
+                    chem_name, 
+                    chem_data,
+                    self.mow_sensor._weather_entity if hasattr(self.mow_sensor, '_weather_entity') else None
+                )
+                self.chemical_sensors[chem_name] = sensor
+                new_entities.append(sensor)
+            
+            # Add new sensors immediately
+            if new_entities:
+                self.async_add_entities(new_entities)
+                _LOGGER.info("✅ Added %d new chemical sensors", len(new_entities))
+            
+            self.known_chemicals = current_chems
+        
+        # Update all existing sensors
+        for sensor in self.chemical_sensors.values():
+            await sensor.async_update()
+            sensor.async_write_ha_state()
 
     async def _handle_equipment_update_signal(self):
         """Handle equipment update signal."""
@@ -113,8 +153,16 @@ class LawnManagerSensorManager:
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities):
-    manager = LawnManagerSensorManager(hass, entry, async_add_entities)
-    await manager.async_setup()
+    """Set up Lawn Manager sensors from a config entry."""
+    try:
+        _LOGGER.warning("🔧 Setting up Lawn Manager sensors for %s", entry.title)
+        manager = LawnManagerSensorManager(hass, entry, async_add_entities)
+        await manager.async_setup()
+        _LOGGER.warning("✅ Successfully set up Lawn Manager sensors for %s", entry.title)
+        return True
+    except Exception as err:
+        _LOGGER.error("❌ Failed to set up Lawn Manager sensors: %s", err, exc_info=True)
+        raise
 
 
 class LawnMowSensor(SensorEntity):
@@ -126,10 +174,12 @@ class LawnMowSensor(SensorEntity):
         self._last_mow = None
         self._store = store
         self._unsub_dispatcher = None
+        self._latest_activity = None  # Store latest activity details
 
     async def async_added_to_hass(self):
+        signal_name = f"lawn_manager_update_{self._entry_id}"
         self._unsub_dispatcher = async_dispatcher_connect(
-            self.hass, "lawn_manager_update", self._handle_update_signal
+            self.hass, signal_name, self._handle_update_signal
         )
 
     async def async_will_remove_from_hass(self):
@@ -144,15 +194,26 @@ class LawnMowSensor(SensorEntity):
     async def async_update(self):
         data = await self._store.async_load() or {}
         try:
-            self._last_mow = dt_util.as_local(
-                datetime.strptime(data.get("last_mow"), "%Y-%m-%d")
-            )
+            if data.get("last_mow"):
+                self._last_mow = dt_util.as_local(
+                    datetime.strptime(data.get("last_mow"), "%Y-%m-%d")
+                )
+            else:
+                self._last_mow = None
         except Exception:
             self._last_mow = dt_util.now() - timedelta(days=self._mow_interval + 1)
+        
+        # Load latest activity details from mowing history
+        mowing_history = data.get("mowing_history", [])
+        if mowing_history:
+            # Get the most recent activity (last item in list)
+            self._latest_activity = mowing_history[-1]
+        else:
+            self._latest_activity = None
 
     @property
     def name(self):
-        return f"{self._yard_zone} Last Mow Date"
+        return f"{self._yard_zone} Last Lawn Activity"
 
     @property
     def state(self):
@@ -173,11 +234,21 @@ class LawnMowSensor(SensorEntity):
         if not self._last_mow:
             return {}
         next_due = self._last_mow + timedelta(days=self._mow_interval)
-        return {
+        attrs = {
             "location": self._location,
             "last_mow": self._last_mow.strftime("%Y-%m-%d"),
             "next_mow_due": next_due.strftime("%Y-%m-%d"),
         }
+        
+        # Add latest activity details from mowing history
+        if self._latest_activity:
+            attrs["last_activity_type"] = self._latest_activity.get("cut_type", "Regular Maintenance")
+            if "height_of_cut_inches" in self._latest_activity:
+                attrs["last_height_of_cut_inches"] = self._latest_activity["height_of_cut_inches"]
+            if "timestamp" in self._latest_activity:
+                attrs["last_activity_timestamp"] = self._latest_activity["timestamp"]
+        
+        return attrs
 
     @property
     def unique_id(self):
@@ -211,8 +282,9 @@ class LawnMowDueSensor(SensorEntity):
         self._unsub_dispatcher = None
 
     async def async_added_to_hass(self):
+        signal_name = f"lawn_manager_update_{self._entry_id}"
         self._unsub_dispatcher = async_dispatcher_connect(
-            self.hass, "lawn_manager_update", self._handle_update_signal
+            self.hass, signal_name, self._handle_update_signal
         )
         # Initialize weather helper if weather entity is configured
         if self._weather_entity:
@@ -353,8 +425,9 @@ class ChemicalApplicationSensor(SensorEntity):
                 self._state = None
 
     async def async_added_to_hass(self):
+        signal_name = f"lawn_manager_update_{self._entry_id}"
         self._unsub_dispatcher = async_dispatcher_connect(
-            self.hass, "lawn_manager_update", self._handle_update_signal
+            self.hass, signal_name, self._handle_update_signal
         )
         # Initialize weather helper if weather entity is configured
         if self._weather_entity:
@@ -502,8 +575,9 @@ class LawnSeasonalSensor(SensorEntity):
         else:
             self._seasonal_helper = None
         
+        signal_name = f"lawn_manager_update_{self._entry_id}"
         self._unsub_dispatcher = async_dispatcher_connect(
-            self.hass, "lawn_manager_update", self._handle_update_signal
+            self.hass, signal_name, self._handle_update_signal
         )
 
     async def async_will_remove_from_hass(self):
@@ -745,8 +819,9 @@ class EquipmentInventorySensor(SensorEntity):
         self._unsub_dispatcher = None
 
     async def async_added_to_hass(self):
+        signal_name = f"lawn_manager_equipment_update_{self._entry_id}"
         self._unsub_dispatcher = async_dispatcher_connect(
-            self.hass, "lawn_manager_equipment_update", self._handle_equipment_update_signal
+            self.hass, signal_name, self._handle_equipment_update_signal
         )
 
     async def async_will_remove_from_hass(self):
@@ -760,10 +835,7 @@ class EquipmentInventorySensor(SensorEntity):
 
     async def async_update(self):
         # Load equipment list from storage
-        from homeassistant.helpers.storage import Store
-        from .const import STORAGE_VERSION, EQUIPMENT_STORAGE_KEY
-        
-        equipment_store = Store(self.hass, STORAGE_VERSION, EQUIPMENT_STORAGE_KEY)
+        equipment_store = Store(self.hass, 1, "lawn_manager_equipment")
         equipment_data = await equipment_store.async_load() or {}
         
         # Convert equipment data to list format
