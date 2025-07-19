@@ -4,9 +4,10 @@ from homeassistant.helpers.typing import ConfigType
 from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 from homeassistant.helpers.dispatcher import async_dispatcher_send
+import asyncio
 import logging
 
-from .const import DOMAIN, CHEMICALS, EQUIPMENT_STORAGE_KEY, get_storage_key
+from .const import DOMAIN, CHEMICALS, EQUIPMENT_STORAGE_KEY, get_storage_key, PLATFORMS
 
 _LOGGER = logging.getLogger(__name__)
 STORAGE_KEY = "lawn_manager_data"
@@ -137,22 +138,67 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     from .services import async_register_services
     await async_register_services(hass)
 
-    # Forward setup to platforms
-    await hass.config_entries.async_forward_entry_setups(entry, ["sensor", "binary_sensor", "button", "select", "text", "date"])
+    # Ensure storage is initialized with default data before loading entities
+    storage_key = get_storage_key(entry.entry_id)
+    store = Store(hass, 1, storage_key)
+    data = await store.async_load() or {}
+    
+    # Initialize default data structure if first time
+    if not data:
+        data = {
+            "last_mow": None,
+            "mowing_history": [],
+            "applications": {}  # Changed from list to dictionary
+        }
+        await store.async_save(data)
+        _LOGGER.info("✅ Initialized storage for new zone: %s", entry.title)
 
+    # Forward setup to all platforms
+    _LOGGER.info("🔧 Setting up platforms for %s: %s", entry.title, PLATFORMS)
+    try:
+        await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+        _LOGGER.info("✅ All platforms setup complete for %s", entry.title)
+    except Exception as err:
+        _LOGGER.error("❌ Failed to set up platforms: %s", err)
+        raise
+    
+    # Small delay to ensure all platforms are ready
+    await asyncio.sleep(0.2)
+    
+    # Trigger initial update signal to ensure all entities get their data
+    async_dispatcher_send(hass, f"lawn_manager_update_{entry.entry_id}")
+    
+    _LOGGER.info("✅ Lawn Manager setup complete for %s", entry.title)
     return True
 
 
 async def _register_services(hass: HomeAssistant):
     """Register custom services for Lawn Manager."""
 
-    async def handle_log_mow(call: ServiceCall):
-        _LOGGER.info("🔧 log_mow service called")
+    async def handle_log_lawn_activity(call: ServiceCall):
+        """Handle logging a lawn activity."""
         application_date = call.data.get("application_date")
-        zone_entry_id = call.data.get("_zone_entry_id")
+        cut_type = call.data.get("cut_type", "Regular Maintenance")
+        height_of_cut = call.data.get("height_of_cut")
+        zone_entry_id = call.data.get("_zone_entry_id") or call.data.get("zone")
+        
+        _LOGGER.warning("🔍 SERVICE - Received: cut_type=%s, height_of_cut=%s, zone=%s", 
+                       cut_type, height_of_cut, zone_entry_id)
         
         if not zone_entry_id:
             _LOGGER.error("❌ No zone entry ID provided - cannot determine which zone to update")
+            _LOGGER.error("ℹ️ When using the service directly, you must provide the _zone_entry_id parameter")
+            _LOGGER.error("ℹ️ Your zone ID can be found in Configuration > Integrations > Lawn Manager > Configure")
+            return
+            
+        # Verify zone exists
+        entries = hass.config_entries.async_entries(DOMAIN)
+        zone_exists = any(entry.entry_id == zone_entry_id for entry in entries)
+        if not zone_exists:
+            _LOGGER.error("❌ Invalid zone ID: %s - zone not found", zone_entry_id)
+            _LOGGER.error("ℹ️ Available zones:")
+            for entry in entries:
+                _LOGGER.error("  - %s (%s)", entry.title, entry.entry_id)
             return
             
         # Use zone-specific storage
@@ -170,13 +216,13 @@ async def _register_services(hass: HomeAssistant):
                 
                 # Check if date is in the future
                 if provided_date > today:
-                    _LOGGER.error("❌ Cannot log mow for future date: %s", application_date)
+                    _LOGGER.error("❌ Cannot log lawn activity for future date: %s", application_date)
                     return
                 
                 # Check if date is more than 1 year ago
                 one_year_ago = today - timedelta(days=365)
                 if provided_date < one_year_ago:
-                    _LOGGER.error("❌ Cannot log mow for date more than 1 year ago: %s", application_date)
+                    _LOGGER.error("❌ Cannot log lawn activity for date more than 1 year ago: %s", application_date)
                     return
                 
                 mow_date_str = application_date
@@ -186,12 +232,37 @@ async def _register_services(hass: HomeAssistant):
         else:
             mow_date_str = dt_util.now().strftime("%Y-%m-%d")
         
+        # Store enhanced mowing data
         data["last_mow"] = mow_date_str
+        
+        # Initialize mowing_history if it doesn't exist
+        if "mowing_history" not in data:
+            data["mowing_history"] = []
+        
+        # Create detailed mowing record
+        mow_record = {
+            "date": mow_date_str,
+            "cut_type": cut_type,
+            "timestamp": dt_util.now().isoformat()
+        }
+        
+        # Add height of cut if provided
+        if height_of_cut is not None:
+            mow_record["height_of_cut_inches"] = float(height_of_cut)
+        
+        # Add to history (keep last 50 records to prevent storage bloat)
+        data["mowing_history"].append(mow_record)
+        if len(data["mowing_history"]) > 50:
+            data["mowing_history"] = data["mowing_history"][-50:]
+        
         await store.async_save(data)
-        _LOGGER.info("✅ Mow logged: %s", data["last_mow"])
+        _LOGGER.info("✅ Lawn Activity logged: %s (%s%s)", mow_date_str, cut_type, 
+                    f" at {height_of_cut}\"" if height_of_cut else "")
 
-        # Notify sensors to update
-        async_dispatcher_send(hass, "lawn_manager_update")
+        # Notify sensors to update with zone-specific signal
+        signal_name = f"lawn_manager_update_{zone_entry_id}"
+        async_dispatcher_send(hass, signal_name)
+        _LOGGER.info("✅ Sent update signal for zone: %s", zone_entry_id)
 
     async def handle_log_application(call: ServiceCall):
         """Handle logging a chemical application."""
@@ -247,8 +318,15 @@ async def _register_services(hass: HomeAssistant):
         else:
             application_date_str = dt_util.now().strftime("%Y-%m-%d")
 
+        # Ensure applications is a dictionary
         if "applications" not in data:
             data["applications"] = {}
+        elif isinstance(data["applications"], list):
+            # Convert old list format to dictionary
+            _LOGGER.warning("Converting old applications list format to dictionary")
+            applications = {app.get("chemical_name", f"Chemical {i}"): app 
+                          for i, app in enumerate(data["applications"]) if isinstance(app, dict)}
+            data["applications"] = applications
 
         # Get zone configuration for lawn size
         entries = hass.config_entries.async_entries(DOMAIN)
@@ -372,8 +450,10 @@ async def _register_services(hass: HomeAssistant):
         _LOGGER.info("✅ Application logged: %s in %s on %s via %s at %s rate (%.1fx) - %.3f oz needed", 
                     chemical, yard_zone, application_date_str, method, rate_description, rate_multiplier, total_chemical_needed_oz)
 
-        # Notify sensors to update
-        async_dispatcher_send(hass, "lawn_manager_update")
+        # Notify sensors to update with zone-specific signal
+        signal_name = f"lawn_manager_update_{zone_entry_id}"
+        async_dispatcher_send(hass, signal_name)
+        _LOGGER.info("✅ Sent update signal for zone: %s", zone_entry_id)
 
     async def handle_reload(call: ServiceCall):
         """Reload the Lawn Manager integration from a service call."""
@@ -383,14 +463,31 @@ async def _register_services(hass: HomeAssistant):
             await hass.config_entries.async_reload(entry.entry_id)
 
     # Register services if not already registered
-    if not hass.services.has_service(DOMAIN, "log_mow"):
-        hass.services.async_register(DOMAIN, "log_mow", handle_log_mow)
+    if not hass.services.has_service(DOMAIN, "log_lawn_activity"):  # New name
+        hass.services.async_register(DOMAIN, "log_lawn_activity", handle_log_lawn_activity)
 
     if not hass.services.has_service(DOMAIN, "log_application"):
         hass.services.async_register(DOMAIN, "log_application", handle_log_application)
 
     if not hass.services.has_service(DOMAIN, "reload"):
         hass.services.async_register(DOMAIN, "reload", handle_reload)
+
+
+async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Unload a config entry."""
+    _LOGGER.info("🔄 Unloading Lawn Manager entry: %s", entry.title)
+    
+    # Unload all platforms
+    unload_ok = await hass.config_entries.async_unload_platforms(
+        entry, PLATFORMS
+    )
+    
+    if unload_ok:
+        _LOGGER.info("✅ Successfully unloaded Lawn Manager entry: %s", entry.title)
+    else:
+        _LOGGER.error("❌ Failed to unload Lawn Manager entry: %s", entry.title)
+    
+    return unload_ok
 
 
 async def async_remove_entry(hass, entry):
