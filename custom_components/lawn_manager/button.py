@@ -2,13 +2,23 @@ from homeassistant.components.button import ButtonEntity
 from homeassistant.core import HomeAssistant
 from homeassistant.config_entries import ConfigEntry
 import logging
+import asyncio
 
 from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities):
-    _LOGGER.info("Setting up Lawn Manager button entities")
+    _LOGGER.info(f"Setting up Lawn Manager button entities for zone {entry.entry_id}")
+    
+    # Log all existing entities for this zone
+    zone_entities = []
+    for state in hass.states.async_all():
+        if entry.entry_id in state.entity_id:
+            zone_entities.append(state.entity_id)
+    
+    _LOGGER.warning(f"🔍 Existing entities for zone {entry.entry_id}: {zone_entities}")
+    
     entities = [
         LogMowButton(hass, entry),
         LogChemicalButton(hass, entry),
@@ -19,7 +29,7 @@ class LogMowButton(ButtonEntity):
     def __init__(self, hass, entry):
         self._hass = hass
         self._entry = entry
-        self._attr_name = "Log Mow"
+        self._attr_name = "🌿 Log Lawn Activity"
         self._attr_unique_id = f"{entry.entry_id}_log_mow"
         self._attr_icon = "mdi:grass"
 
@@ -32,33 +42,89 @@ class LogMowButton(ButtonEntity):
         }
 
     async def async_press(self):
-        _LOGGER.info("Log Mow button pressed")
+        _LOGGER.warning("🌿 Log Lawn Activity button pressed - Starting comprehensive entity search...")
+        _LOGGER.warning(f"🔍 Button zone ID: {self._entry.entry_id}")
         
-        # Construct the application date entity ID directly
-        application_date_entity = f"date.lawn_manager_{self._entry.entry_id}_application_date"
+        # First, let's see ALL entities that might be relevant
+        all_selects = []
+        all_numbers = []
+        all_dates = []
         
-        # Get the selected date
-        application_date = self._hass.states.get(application_date_entity)
+        for state in self._hass.states.async_all():
+            entity_id = state.entity_id
+            if entity_id.startswith("select."):
+                all_selects.append(entity_id)
+            elif entity_id.startswith("number."):
+                all_numbers.append(entity_id)
+            elif entity_id.startswith("date."):
+                all_dates.append(entity_id)
+        
+        _LOGGER.warning(f"📋 Found {len(all_selects)} select entities: {all_selects}")
+        _LOGGER.warning(f"📋 Found {len(all_numbers)} number entities: {all_numbers}")
+        _LOGGER.warning(f"📋 Found {len(all_dates)} date entities: {all_dates}")
+        
+        # Find entities by searching through all states (EXACTLY like chemical button)
+        activity_type_entity = None
+        height_of_cut_entity = None
+        application_date_entity = None
+        
+        # Search for our entities in all states (NO ZONE CHECK - like chemical button)
+        for state in self._hass.states.async_all():
+            entity_id = state.entity_id
+            if entity_id.startswith("select.") and "activity_type_selection" in entity_id:
+                activity_type_entity = entity_id
+                _LOGGER.warning(f"✅ Found activity type: {entity_id} = {state.state}")
+            elif entity_id.startswith("number.") and "height_of_cut" in entity_id:
+                height_of_cut_entity = entity_id
+                _LOGGER.warning(f"✅ Found HOC: {entity_id} = {state.state}")
+            elif entity_id.startswith("date.") and "application_date" in entity_id:
+                application_date_entity = entity_id
+                _LOGGER.warning(f"✅ Found date: {entity_id} = {state.state}")
+        
+        _LOGGER.warning(f"🔍 Entity search complete - Activity: {activity_type_entity}, HOC: {height_of_cut_entity}, Date: {application_date_entity}")
+        
+        # Get entity states
+        activity_type = self._hass.states.get(activity_type_entity) if activity_type_entity else None
+        height_of_cut = self._hass.states.get(height_of_cut_entity) if height_of_cut_entity else None
+        application_date = self._hass.states.get(application_date_entity) if application_date_entity else None
+        
+        # Get values with defaults
+        activity_type_value = activity_type.state if activity_type else "Regular Maintenance"
+        height_of_cut_value = None
+        if height_of_cut and height_of_cut.state:
+            try:
+                height_of_cut_value = float(height_of_cut.state)
+            except (ValueError, TypeError):
+                _LOGGER.error(f"Could not convert HOC '{height_of_cut.state}' to float")
+        
         application_date_value = application_date.state if application_date else None
         
-        _LOGGER.info("Log Mow using date: %s from entity: %s", application_date_value, application_date_entity)
+        _LOGGER.warning(f"📊 Final values to log:")
+        _LOGGER.warning(f"  - Activity: {activity_type_value}")
+        _LOGGER.warning(f"  - HOC: {height_of_cut_value}")
+        _LOGGER.warning(f"  - Date: {application_date_value}")
         
-        # Call the service with the selected date (include zone info for proper data isolation)
+        # Call the service
         service_data = {
-            "_zone_entry_id": self._entry.entry_id  # Add zone context for proper data isolation
+            "cut_type": activity_type_value,
+            "_zone_entry_id": self._entry.entry_id
         }
         if application_date_value:
             service_data["application_date"] = application_date_value
+        if height_of_cut_value is not None:
+            service_data["height_of_cut"] = height_of_cut_value
+        
+        _LOGGER.warning(f"📞 Calling service with: {service_data}")
         
         await self._hass.services.async_call(
-            DOMAIN, "log_mow", service_data, blocking=True
+            DOMAIN, "log_lawn_activity", service_data, blocking=True
         )
 
 class LogChemicalButton(ButtonEntity):
     def __init__(self, hass, entry):
         self._hass = hass
         self._entry = entry
-        self._attr_name = "Log Chemical Application"
+        self._attr_name = "🧪 Log Chemical Application"
         self._attr_unique_id = f"{entry.entry_id}_log_chemical"
         self._attr_icon = "mdi:flask-outline"
 
