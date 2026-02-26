@@ -34,9 +34,13 @@ def _scan_weather_entities(hass):
         return weather_entities
 
     indoor_keywords = ["indoor", "inside", "interior", "in_temp", "in_humid"]
+    # Device classes that indicate an air quality monitor, not a weather station
+    aqi_classes = {"pm25", "pm1", "pm10", "aqi", "volatile_organic_compounds",
+                   "volatile_organic_compounds_parts", "carbon_dioxide", "carbon_monoxide",
+                   "nitrogen_dioxide", "nitrogen_monoxide", "ozone", "sulphur_dioxide"}
 
-    # Group sensor entities by device_id, tracking what sensor types each device has
-    device_sensors = {}  # device_id -> {"temp": [entity], "humidity": [entity], ...}
+    # Group sensor entities by device_id
+    device_sensors = {}
     for entry in ent_reg.entities.values():
         if entry.domain != "sensor" or not entry.device_id:
             continue
@@ -46,14 +50,16 @@ def _scan_weather_entities(hass):
         eid_lower = entry.entity_id.lower()
         name_lower = (entry.original_name or entry.name or "").lower()
 
-        # Skip clearly indoor sensors
         if any(kw in eid_lower or kw in name_lower for kw in indoor_keywords):
             continue
 
         dev_class = entry.original_device_class or entry.device_class or ""
 
         if entry.device_id not in device_sensors:
-            device_sensors[entry.device_id] = {"temp": [], "humidity": [], "wind": [], "pressure": []}
+            device_sensors[entry.device_id] = {
+                "temp": [], "humidity": [], "wind": [], "pressure": [],
+                "has_aqi": False,
+            }
 
         if dev_class == "temperature":
             device_sensors[entry.device_id]["temp"].append(entry)
@@ -64,9 +70,25 @@ def _scan_weather_entities(hass):
         elif dev_class in ("pressure", "atmospheric_pressure"):
             device_sensors[entry.device_id]["pressure"].append(entry)
 
-    # A weather station device has at least temperature + humidity (outdoor)
+        # Flag devices that have air quality sensors
+        if dev_class in aqi_classes or "pm2" in eid_lower or "aqi" in eid_lower:
+            device_sensors[entry.device_id]["has_aqi"] = True
+
+    # A REAL weather station has temp + humidity + (wind OR pressure).
+    # Air quality monitors (PM2.5) often have temp+humidity but no wind/pressure — skip those.
     for device_id, sensors in device_sensors.items():
         if not sensors["temp"] or not sensors["humidity"]:
+            continue
+
+        has_wind_or_pressure = bool(sensors["wind"] or sensors["pressure"])
+
+        # If the device has AQI sensors and NO wind/pressure, it's an air quality monitor
+        if sensors["has_aqi"] and not has_wind_or_pressure:
+            continue
+
+        # Even without AQI flag, require wind or pressure to confirm it's a real weather station
+        # (avoids picking up random temp+humidity combos like thermostats)
+        if not has_wind_or_pressure:
             continue
 
         device = dev_reg.async_get(device_id)
@@ -75,11 +97,10 @@ def _scan_weather_entities(hass):
 
         device_name = device.name_by_user or device.name or "Weather Station"
 
-        # Pick the best outdoor temperature sensor for this device
+        # Pick the best outdoor temperature sensor
         temp_entity = sensors["temp"][0]
         for t in sensors["temp"]:
             t_lower = t.entity_id.lower() + (t.original_name or "").lower()
-            # Prefer ones with "outdoor", "temp", "temperature" and skip feels_like/dew
             if any(x in t_lower for x in ["outdoor", "outside", "tempf"]):
                 temp_entity = t
                 break
@@ -90,7 +111,6 @@ def _scan_weather_entities(hass):
         if temp_entity.entity_id in seen_ids:
             continue
 
-        # Verify the entity has a valid numeric state
         state = hass.states.get(temp_entity.entity_id)
         if not state:
             continue
