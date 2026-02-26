@@ -5,7 +5,7 @@ from homeassistant.helpers.storage import Store
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 import logging
 
-from .const import DOMAIN, CHEMICALS, EQUIPMENT_STORAGE_KEY, STORAGE_VERSION
+from .const import DOMAIN, CHEMICALS, EQUIPMENT_STORAGE_KEY, STORAGE_VERSION, get_storage_key
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -158,7 +158,7 @@ class LogChemicalButton(ButtonEntity):
 
 
 class CalculateRateButton(ButtonEntity):
-    """Button to calculate application rate directly from controls."""
+    """Button to calculate application rate and store result in zone storage."""
 
     def __init__(self, hass, entry):
         self._hass = hass
@@ -207,38 +207,23 @@ class CalculateRateButton(ButtonEntity):
 
         zone = self._entry.data.get("yard_zone", "Unknown")
 
-        service_data = {
-            "chemical": chemical,
-            "equipment_name": equipment_name,
-            "zone": zone,
-        }
+        # Calculate directly and save to zone storage
+        from .services import _calculate_rate_direct
+        result = await _calculate_rate_direct(self._hass, chemical, equipment_name, zone)
 
-        try:
-            result = await self._hass.services.async_call(
-                DOMAIN, "calculate_application_rate",
-                service_data,
-                blocking=True,
-                return_response=True,
-            )
-        except Exception:
-            result = None
-
-        # Always fire the dispatcher signal directly with the calculation data
-        # The service may or may not return the result depending on HA version,
-        # so we also call the service handler directly as a fallback
         if result:
+            # Save to zone storage so the RateCalculationSensor can read it
+            zone_storage_key = get_storage_key(eid)
+            store = Store(self._hass, STORAGE_VERSION, zone_storage_key)
+            data = await store.async_load() or {}
+            data["last_rate_calculation"] = result
+            await store.async_save(data)
+
+            # Signal sensor to update
             async_dispatcher_send(
                 self._hass,
-                f"lawn_manager_rate_calculated_{eid}",
-                result
+                f"lawn_manager_update_{eid}"
             )
+            _LOGGER.info("Rate calculation saved: %s", result.get("mixing_instructions", result.get("application_rate", "done")))
         else:
-            # Fallback: call the calculation logic directly
-            from .services import _calculate_rate_direct
-            fallback_result = await _calculate_rate_direct(self._hass, chemical, equipment_name, zone)
-            if fallback_result:
-                async_dispatcher_send(
-                    self._hass,
-                    f"lawn_manager_rate_calculated_{eid}",
-                    fallback_result
-                )
+            _LOGGER.error("Rate calculation returned no result for %s / %s / %s", chemical, equipment_name, zone)
