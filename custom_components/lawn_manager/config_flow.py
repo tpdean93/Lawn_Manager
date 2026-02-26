@@ -292,22 +292,48 @@ class OptionsFlow(config_entries.OptionsFlow):
 
         if user_input is not None:
             mow_interval = user_input.get("mow_interval", "7")
-            if isinstance(mow_interval, str):
+            try:
                 mow_interval = int(mow_interval)
+            except (TypeError, ValueError):
+                mow_interval = int(entry.data.get("mow_interval", 7) or 7)
 
             new_data = {**entry.data}
-            new_data["location"] = user_input.get("location", new_data.get("location", ""))
+            new_data["location"] = user_input.get("location", new_data.get("location", "")) or ""
             new_data["mow_interval"] = mow_interval
             new_data["lawn_size_sqft"] = user_input.get("lawn_size_sqft", new_data.get("lawn_size_sqft", 1000))
             new_data["grass_type"] = user_input.get("grass_type", new_data.get("grass_type", "Bermuda"))
-            new_data["weather_entity"] = user_input.get("weather_entity", new_data.get("weather_entity", ""))
-            new_data["rain_sensor"] = user_input.get("rain_sensor", new_data.get("rain_sensor", ""))
+            new_data["weather_entity"] = user_input.get("weather_entity", new_data.get("weather_entity", "")) or ""
+            new_data["rain_sensor"] = user_input.get("rain_sensor", new_data.get("rain_sensor", "")) or ""
 
             self.hass.config_entries.async_update_entry(entry, data=new_data)
             await self.hass.config_entries.async_reload(entry.entry_id)
             return self.async_create_entry(title="", data={})
 
         current = entry.data
+
+        location_default = current.get("location") or ""
+        grass_default = current.get("grass_type") or "Bermuda"
+        weather_default = current.get("weather_entity") or ""
+        rain_default = current.get("rain_sensor") or ""
+
+        raw_lawn_size = current.get("lawn_size_sqft", 1000)
+        try:
+            lawn_size_default = int(raw_lawn_size)
+        except (TypeError, ValueError):
+            try:
+                lawn_size_default = int(float(raw_lawn_size))
+            except (TypeError, ValueError):
+                lawn_size_default = 1000
+
+        raw_mow_interval = current.get("mow_interval", 7)
+        try:
+            mow_interval_default = int(raw_mow_interval)
+        except (TypeError, ValueError):
+            mow_interval_default = 7
+
+        mow_interval_options = {str(k): v for k, v in MOW_INTERVAL_OPTIONS.items()}
+        if str(mow_interval_default) not in mow_interval_options:
+            mow_interval_options[str(mow_interval_default)] = f"Every {mow_interval_default} days (current)"
 
         try:
             weather_entities = _get_weather_entities(self.hass)
@@ -321,30 +347,26 @@ class OptionsFlow(config_entries.OptionsFlow):
             _LOGGER.warning("Error getting rain sensors: %s", e)
             rain_sensors = []
 
-        current_grass = current.get("grass_type", "Bermuda")
         grass_options = list(GRASS_TYPE_LIST)
-        if current_grass not in grass_options:
-            grass_options.append(current_grass)
+        if grass_default not in grass_options:
+            grass_options.append(grass_default)
 
         schema_dict = {
-            vol.Required("location", default=current.get("location", "")): str,
-            vol.Required("mow_interval", default=str(current.get("mow_interval", 7))): vol.In(
-                {str(k): v for k, v in MOW_INTERVAL_OPTIONS.items()}
-            ),
-            vol.Required("lawn_size_sqft", default=current.get("lawn_size_sqft", 1000)): vol.All(
+            vol.Required("location", default=location_default): str,
+            vol.Required("mow_interval", default=str(mow_interval_default)): vol.In(mow_interval_options),
+            vol.Required("lawn_size_sqft", default=lawn_size_default): vol.All(
                 vol.Coerce(int), vol.Range(min=100, max=100000)
             ),
-            vol.Required("grass_type", default=current_grass): vol.In(grass_options),
+            vol.Required("grass_type", default=grass_default): vol.In(grass_options),
         }
 
         if weather_entities:
             weather_options_dict = {"": "None"}
             for eid, name in weather_entities:
                 weather_options_dict[eid] = name
-            current_weather = current.get("weather_entity", "")
-            if current_weather and current_weather not in weather_options_dict:
-                weather_options_dict[current_weather] = f"{current_weather} (not found)"
-            schema_dict[vol.Optional("weather_entity", default=current_weather)] = vol.In(
+            if weather_default not in weather_options_dict:
+                weather_options_dict[weather_default] = f"{weather_default} (not found)"
+            schema_dict[vol.Optional("weather_entity", default=weather_default)] = vol.In(
                 weather_options_dict
             )
 
@@ -352,10 +374,9 @@ class OptionsFlow(config_entries.OptionsFlow):
             rain_options_dict = {"": "None (use forecast data)"}
             for eid, name in rain_sensors:
                 rain_options_dict[eid] = name
-            current_rain = current.get("rain_sensor", "")
-            if current_rain and current_rain not in rain_options_dict:
-                rain_options_dict[current_rain] = f"{current_rain} (not found)"
-            schema_dict[vol.Optional("rain_sensor", default=current_rain)] = vol.In(
+            if rain_default not in rain_options_dict:
+                rain_options_dict[rain_default] = f"{rain_default} (not found)"
+            schema_dict[vol.Optional("rain_sensor", default=rain_default)] = vol.In(
                 rain_options_dict
             )
 

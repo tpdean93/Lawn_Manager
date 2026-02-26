@@ -162,7 +162,8 @@ async def async_register_services(hass: HomeAssistant) -> None:
     async def handle_calculate_application_rate(call: ServiceCall):
         """Calculate application rates based on equipment and zone."""
         chemical = call.data.get("chemical")
-        equipment_name = call.data.get("equipment_name")
+        equipment_name = (call.data.get("equipment_name") or "").strip()
+        equipment_entity = call.data.get("equipment_entity")
         zone_input = call.data.get("zone")
 
         entries = hass.config_entries.async_entries(DOMAIN)
@@ -185,18 +186,26 @@ async def async_register_services(hass: HomeAssistant) -> None:
 
         lawn_size_sqft = zone_config.get("lawn_size_sqft", 1000)
 
+        if not equipment_name and equipment_entity:
+            equipment_state = hass.states.get(equipment_entity)
+            if not equipment_state:
+                _LOGGER.error("Equipment entity '%s' not found", equipment_entity)
+                return {"error": f"Equipment entity '{equipment_entity}' not found"}
+            if equipment_state.state and equipment_state.state != "None":
+                equipment_name = equipment_state.state.strip()
+            else:
+                return {"error": f"Equipment entity '{equipment_entity}' has no selected equipment"}
+
         if not equipment_name:
-            _LOGGER.error("Equipment name required")
-            return {"error": "Equipment name required"}
+            _LOGGER.error("Equipment name required (or provide equipment_entity)")
+            return {"error": "Equipment name required (or provide equipment_entity)"}
 
         # Always load from storage for latest data
         equipment_data = await equipment_store.async_load() or {}
-        equipment_id = None
         equipment = None
 
         for eq_id, eq_info in equipment_data.items():
             if eq_info.get("friendly_name") == equipment_name:
-                equipment_id = eq_id
                 equipment = eq_info
                 break
 

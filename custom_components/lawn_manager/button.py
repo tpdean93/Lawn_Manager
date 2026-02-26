@@ -3,19 +3,41 @@ from homeassistant.core import HomeAssistant
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.helpers.storage import Store
 from homeassistant.helpers.dispatcher import async_dispatcher_send
-from homeassistant.util import dt as dt_util
 import logging
 
-from .const import DOMAIN, CHEMICALS, EQUIPMENT_STORAGE_KEY, STORAGE_VERSION, get_storage_key
+from .const import DOMAIN, STORAGE_VERSION, get_storage_key
 from . import get_zone_store_and_data
 
 _LOGGER = logging.getLogger(__name__)
 
 
-def _find_zone_entity(hass, entry_id, domain_prefix, suffix):
-    for state in hass.states.async_all():
+def _find_zone_entity(hass, entry_id, domain, suffixes):
+    """Find a zone entity by config entry ID and unique_id suffix."""
+    from homeassistant.helpers import entity_registry as er
+
+    if isinstance(suffixes, str):
+        suffixes = (suffixes,)
+
+    domain = domain.rstrip(".")
+
+    # Primary: robust lookup via entity registry.
+    try:
+        ent_reg = er.async_get(hass)
+        for ent in ent_reg.entities.values():
+            if ent.domain != domain:
+                continue
+            if ent.config_entry_id != entry_id:
+                continue
+            unique_id = ent.unique_id or ""
+            if any(unique_id.endswith(suffix) for suffix in suffixes):
+                return ent.entity_id
+    except Exception as err:
+        _LOGGER.debug("Entity registry lookup failed for %s: %s", entry_id, err)
+
+    # Fallback for legacy IDs.
+    for state in hass.states.async_all(domain):
         eid = state.entity_id
-        if eid.startswith(domain_prefix) and entry_id in eid and suffix in eid:
+        if any(suffix in eid for suffix in suffixes):
             return eid
     return None
 
@@ -48,9 +70,9 @@ class LogMowButton(ButtonEntity):
 
     async def async_press(self):
         eid = self._entry.entry_id
-        activity_type_entity = _find_zone_entity(self._hass, eid, "select.", "activity_type_selection")
-        height_of_cut_entity = _find_zone_entity(self._hass, eid, "number.", "height_of_cut")
-        application_date_entity = _find_zone_entity(self._hass, eid, "date.", "application_date")
+        activity_type_entity = _find_zone_entity(self._hass, eid, "select", "activity_type_selection")
+        height_of_cut_entity = _find_zone_entity(self._hass, eid, "number", "height_of_cut")
+        application_date_entity = _find_zone_entity(self._hass, eid, "date", "application_date")
 
         activity_type = self._hass.states.get(activity_type_entity) if activity_type_entity else None
         height_of_cut = self._hass.states.get(height_of_cut_entity) if height_of_cut_entity else None
@@ -97,14 +119,14 @@ class LogChemicalButton(ButtonEntity):
 
     async def async_press(self):
         eid = self._entry.entry_id
-        chemical_select_entity = _find_zone_entity(self._hass, eid, "select.", "chemical_selection")
-        custom_chemical_entity = _find_zone_entity(self._hass, eid, "text.", "custom_chemical_name")
-        method_select_entity = _find_zone_entity(self._hass, eid, "select.", "application_method")
-        equipment_select_entity = _find_zone_entity(self._hass, eid, "select.", "equipment_select")
-        rate_override_entity = _find_zone_entity(self._hass, eid, "select.", "application_rate")
-        custom_rate_entity = _find_zone_entity(self._hass, eid, "text.", "custom_rate_multiplier")
-        custom_rate_unit_entity = _find_zone_entity(self._hass, eid, "select.", "custom_rate_unit")
-        application_date_entity = _find_zone_entity(self._hass, eid, "date.", "application_date")
+        chemical_select_entity = _find_zone_entity(self._hass, eid, "select", "chemical_selection")
+        custom_chemical_entity = _find_zone_entity(self._hass, eid, "text", "custom_chemical_name")
+        method_select_entity = _find_zone_entity(self._hass, eid, "select", ("method_select", "application_method"))
+        equipment_select_entity = _find_zone_entity(self._hass, eid, "select", ("equipment_select", "equipment_selection"))
+        rate_override_entity = _find_zone_entity(self._hass, eid, "select", "application_rate")
+        custom_rate_entity = _find_zone_entity(self._hass, eid, "text", "custom_rate_multiplier")
+        custom_rate_unit_entity = _find_zone_entity(self._hass, eid, "select", "custom_rate_unit")
+        application_date_entity = _find_zone_entity(self._hass, eid, "date", "application_date")
 
         chemical_select = self._hass.states.get(chemical_select_entity) if chemical_select_entity else None
         custom_chemical = self._hass.states.get(custom_chemical_entity) if custom_chemical_entity else None
@@ -169,9 +191,9 @@ class CalculateRateButton(ButtonEntity):
 
     async def async_press(self):
         eid = self._entry.entry_id
-        chemical_select_entity = _find_zone_entity(self._hass, eid, "select.", "chemical_selection")
-        custom_chemical_entity = _find_zone_entity(self._hass, eid, "text.", "custom_chemical_name")
-        equipment_select_entity = _find_zone_entity(self._hass, eid, "select.", "equipment_select")
+        chemical_select_entity = _find_zone_entity(self._hass, eid, "select", "chemical_selection")
+        custom_chemical_entity = _find_zone_entity(self._hass, eid, "text", "custom_chemical_name")
+        equipment_select_entity = _find_zone_entity(self._hass, eid, "select", ("equipment_select", "equipment_selection"))
 
         chemical_select = self._hass.states.get(chemical_select_entity) if chemical_select_entity else None
         custom_chemical = self._hass.states.get(custom_chemical_entity) if custom_chemical_entity else None

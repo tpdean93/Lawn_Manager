@@ -212,10 +212,18 @@ calculate_application_rate:
             - Insecticide
     equipment_name:
       name: Equipment Name
-      description: "Enter the exact equipment name (e.g., 'Ryobi 4 gallon Sprayer'). Run 'list_calculation_options' to see available equipment."
-      required: true
+      description: "Optional exact equipment name (e.g., 'Ryobi 4 gallon Sprayer'). Leave blank if using Equipment Entity below."
+      required: false
       selector:
         text:
+    equipment_entity:
+      name: Equipment Entity
+      description: "Optional: pick your zone's Equipment Selection entity and the selected value will be used."
+      required: false
+      selector:
+        entity:
+          integration: lawn_manager
+          domain: select
     zone:
       name: Zone
       description: "Select the zone to calculate rates for."
