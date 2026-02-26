@@ -311,6 +311,21 @@ async def _register_services(hass: HomeAssistant):
         }
 
         data["applications"][chemical] = application_data
+
+        # Also append to application_history list for full activity tracking
+        if "application_history" not in data:
+            data["application_history"] = []
+        data["application_history"].append({
+            "chemical": chemical,
+            "date": application_date_str,
+            "method": method,
+            "rate_description": rate_description,
+            "detail": f"{rate_description} via {method}",
+            "timestamp": dt_util.now().isoformat(),
+        })
+        if len(data["application_history"]) > 50:
+            data["application_history"] = data["application_history"][-50:]
+
         await store.async_save(data)
 
         _LOGGER.info("Application logged: %s in %s on %s via %s at %s rate (%.1fx) - %.3f oz needed",

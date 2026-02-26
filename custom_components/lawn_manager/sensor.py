@@ -825,7 +825,8 @@ class EquipmentInventorySensor(SensorEntity):
 
 
 class RateCalculationSensor(SensorEntity):
-    """Sensor to display the last application rate calculation result."""
+    """Sensor to display the last application rate calculation result.
+    Reads from zone storage (last_rate_calculation) for reliability."""
 
     def __init__(self, entry_id, yard_zone):
         self._entry_id = entry_id
@@ -834,20 +835,25 @@ class RateCalculationSensor(SensorEntity):
         self._unsub_dispatcher = None
 
     async def async_added_to_hass(self):
-        from homeassistant.helpers.dispatcher import async_dispatcher_connect
+        signal_name = f"lawn_manager_update_{self._entry_id}"
         self._unsub_dispatcher = async_dispatcher_connect(
-            self.hass,
-            f"lawn_manager_rate_calculated_{self._entry_id}",
-            self._handle_rate_calculated
+            self.hass, signal_name, self._handle_update_signal
         )
+        await self.async_update()
 
     async def async_will_remove_from_hass(self):
         if self._unsub_dispatcher:
             self._unsub_dispatcher()
 
-    async def _handle_rate_calculated(self, result):
-        self._calculation_result = result
+    async def _handle_update_signal(self):
+        await self.async_update()
         self.async_write_ha_state()
+
+    async def async_update(self):
+        zone_storage_key = get_storage_key(self._entry_id)
+        store = Store(self.hass, STORAGE_VERSION, zone_storage_key)
+        data = await store.async_load() or {}
+        self._calculation_result = data.get("last_rate_calculation")
 
     @property
     def name(self):
@@ -859,6 +865,8 @@ class RateCalculationSensor(SensorEntity):
             return "No calculation yet"
         chemical = self._calculation_result.get("chemical", "Unknown")
         rate = self._calculation_result.get("application_rate", "")
+        if self._calculation_result.get("mixing_instructions"):
+            return self._calculation_result["mixing_instructions"][:255]
         return f"{chemical}: {rate}" if rate else chemical
 
     @property
@@ -868,7 +876,7 @@ class RateCalculationSensor(SensorEntity):
     @property
     def extra_state_attributes(self):
         if not self._calculation_result:
-            return {"status": "Press 'Calculate Application Rate' button to see results"}
+            return {"status": "Press 'Calculate Application Rate' button to see results here"}
         return self._calculation_result
 
     @property
