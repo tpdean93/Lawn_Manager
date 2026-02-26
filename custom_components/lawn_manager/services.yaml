@@ -1,7 +1,6 @@
 log_lawn_activity:
   name: Log Lawn Activity
-  description: Log lawn maintenance activities including mowing, aeration, dethatching,
-    and more.
+  description: Log lawn maintenance activities including mowing, aeration, dethatching, and more.
   fields:
     zone:
       name: Zone
@@ -12,11 +11,10 @@ log_lawn_activity:
           integration: lawn_manager
     application_date:
       name: Activity Date
-      description: Date when the lawn activity was performed (defaults to today if
-        not specified)
+      description: Date when the lawn activity was performed (defaults to today if not specified)
       required: false
       selector:
-        date: null
+        date:
     cut_type:
       name: Activity Type
       description: Type of lawn maintenance activity performed
@@ -25,17 +23,16 @@ log_lawn_activity:
       selector:
         select:
           options:
-          - Regular Maintenance
-          - Scalp
-          - First Cut of Season
-          - Pre-Winter Cut
-          - HOC Reset
-          - Aerate
-          - Dethatch
+            - Regular Maintenance
+            - Scalp
+            - First Cut of Season
+            - Pre-Winter Cut
+            - HOC Reset
+            - Aerate
+            - Dethatch
     height_of_cut:
       name: Height of Cut (HOC)
-      description: 'Mowing height in inches (only applies to mowing activities: e.g.,
-        2.5, 3.0, 0.125 for scalp)'
+      description: "Mowing height in inches (e.g., 2.5, 3.0, 0.125 for scalp)"
       required: false
       selector:
         number:
@@ -43,34 +40,34 @@ log_lawn_activity:
           max: 6.0
           step: 0.125
           unit_of_measurement: inches
+
 log_application:
   name: Log Chemical Application
   description: Logs a chemical application to track usage and scheduling.
   fields:
     chemical_select:
       name: Chemical Name
-      description: Select from common chemicals. If your chemical isn't listed, enter
-        it below.
+      description: Select from common chemicals. If your chemical isn't listed, enter it below.
       required: true
       selector:
         select:
           options:
-          - Fertilizer 10-10-10
-          - Weed Preventer
-          - Grub Killer
-          - Iron Supplement
-          - Urea
-          - T-Nex / PGR
-          - Disease Preventer
-          - Soil Conditioner
-          - Insecticide
-          - Custom
+            - Fertilizer 10-10-10
+            - Weed Preventer
+            - Grub Killer
+            - Iron Supplement
+            - Urea
+            - T-Nex / PGR
+            - Disease Preventer
+            - Soil Conditioner
+            - Insecticide
+            - Custom
     custom_chemical:
       name: Custom Chemical Name
       description: Optional custom chemical name if it's not in the list above.
       required: false
       selector:
-        text: null
+        text:
     method:
       name: Application Method
       description: How was the chemical applied?
@@ -78,42 +75,54 @@ log_application:
       selector:
         select:
           options:
-          - Sprayer
-          - Spreader
-          - Hand Application
-          - Other
+            - Sprayer
+            - Spreader
+            - Hand Application
+            - Other
     rate_override:
       name: Application Rate
-      description: Choose application rate (Default uses recommended rate from chemical
-        database)
+      description: Choose application rate (Default uses recommended rate from chemical database)
       required: false
       default: Default
       selector:
         select:
           options:
-          - Default
-          - Light (50%)
-          - Heavy (150%)
-          - Extra Heavy (200%)
-          - Custom
+            - Default
+            - Light (50%)
+            - Heavy (150%)
+            - Extra Heavy (200%)
+            - Custom
     custom_rate:
-      name: Custom Rate Multiplier
-      description: Multiplier for custom rate (e.g., 1.0 = default, 2.0 = double rate,
-        0.5 = half rate)
+      name: Custom Rate Value
+      description: "For Custom rate: enter a multiplier (e.g., 1.5 = 150%), or an actual amount if using custom rate units."
       required: false
-      default: '1.0'
+      default: "1.0"
       selector:
-        text: null
+        text:
+    custom_rate_unit:
+      name: Custom Rate Unit
+      description: "How to interpret the custom rate value."
+      required: false
+      default: "Multiplier (1.0x = default rate)"
+      selector:
+        select:
+          options:
+            - "Multiplier (1.0x = default rate)"
+            - "oz per 1,000 sq ft"
+            - "lb per 1,000 sq ft"
+            - "ml per 1,000 sq ft"
     application_date:
       name: Application Date
       description: Date when the chemical was applied (defaults to today if not specified)
       required: false
       selector:
-        date: null
+        date:
+
 reload:
   name: Reload Lawn Manager
   description: Reload the Lawn Manager integration without restarting Home Assistant.
   fields: {}
+
 add_equipment:
   name: Add Equipment
   description: Add new lawn equipment to inventory.
@@ -125,14 +134,14 @@ add_equipment:
       selector:
         select:
           options:
-          - sprayer
-          - spreader
+            - sprayer
+            - spreader
     brand:
       name: Brand
       description: Equipment brand
       required: true
       selector:
-        text: null
+        text:
     capacity:
       name: Capacity
       description: Equipment capacity
@@ -149,25 +158,27 @@ add_equipment:
       selector:
         select:
           options:
-          - gallons
-          - liters
-          - pounds
-          - kg
+            - gallons
+            - liters
+            - pounds
+            - kg
+
 get_equipment_options:
   name: Get Equipment Options
   description: Get available equipment options for dropdown selection.
+
 get_zone_options:
   name: Get Zone Options
   description: Get available zone options for dropdown selection.
+
 list_calculation_options:
   name: List Calculation Options
-  description: List all available equipment and zones for rate calculation. Check
-    logs for output.
+  description: List all available equipment and zones for rate calculation.
+
 refresh_equipment_entity:
   name: Refresh Equipment Entity
-  description: Force refresh the Equipment Selection entity to sync with current equipment
-    inventory. To switch between Application Method and Equipment Selection entities,
-    reload the integration.
+  description: Force refresh the Equipment Selection entity to sync with current equipment inventory.
+
 delete_equipment:
   name: Delete Equipment
   description: Delete equipment by ID.
@@ -177,11 +188,11 @@ delete_equipment:
       description: Equipment ID to delete (use list_equipment to find IDs)
       required: true
       selector:
-        text: null
+        text:
+
 calculate_application_rate:
   name: Calculate Application Rate
-  description: Calculate equipment-specific application rates for your zone. Run 'list_calculation_options'
-    first to see available equipment and zones.
+  description: "Calculate equipment-specific application rates for your zone. Run 'list_calculation_options' first to see available equipment and zones."
   fields:
     chemical:
       name: Chemical
@@ -190,32 +201,28 @@ calculate_application_rate:
       selector:
         select:
           options:
-          - Fertilizer 10-10-10
-          - Weed Preventer
-          - Grub Killer
-          - Iron Supplement
-          - Urea
-          - T-Nex / PGR
-          - Disease Preventer
-          - Soil Conditioner
-          - Insecticide
+            - Fertilizer 10-10-10
+            - Weed Preventer
+            - Grub Killer
+            - Iron Supplement
+            - Urea
+            - T-Nex / PGR
+            - Disease Preventer
+            - Soil Conditioner
+            - Insecticide
     equipment_name:
       name: Equipment Name
-      description: Enter the exact equipment name from list_calculation_options (e.g.,
-        'Ryobi 4 Gallon Sprayer')
+      description: "Enter the exact equipment name (e.g., 'Ryobi 4 gallon Sprayer'). Run 'list_calculation_options' to see available equipment."
       required: true
       selector:
-        select:
-          options:
-          - Ryobi 4.0 gallon Sprayer
-          custom_value: true
+        text:
     zone:
       name: Zone Name
-      description: Enter the exact zone name from list_calculation_options (e.g.,
-        'Front Yard')
+      description: "Enter the exact zone name (e.g., 'Front Yard'). Run 'list_calculation_options' to see available zones."
       required: true
       selector:
-        select:
-          options:
-          - Front Yard
-          custom_value: true
+        text:
+
+clear_equipment_storage:
+  name: Clear Equipment Storage
+  description: Clear all equipment storage (debug only).
