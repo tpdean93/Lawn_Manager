@@ -11,6 +11,7 @@ def _scan_weather_entities(hass):
     weather_entities = []
     seen_ids = set()
 
+    # Standard weather.* entities (always include)
     for entity_id in hass.states.async_entity_ids("weather"):
         state = hass.states.get(entity_id)
         if state and entity_id not in seen_ids:
@@ -18,8 +19,17 @@ def _scan_weather_entities(hass):
             weather_entities.append((entity_id, friendly_name))
             seen_ids.add(entity_id)
 
+    # Look for weather station outdoor temperature sensors
+    # These provide the most useful data for lawn care recommendations
     station_keywords = ["awn", "ambient", "weatherstation", "weather_station",
                         "tempest", "weatherflow", "acurite", "ecowitt", "weewx"]
+
+    # Words that identify the outdoor temperature sensor specifically
+    temp_keywords = ["outdoor_temperature", "outdoor_temp", "tempf", "temp_outdoor",
+                     "outside_temp", "outside_temperature"]
+    # Also match generic "temperature" but only if NOT indoor
+    indoor_keywords = ["indoor", "inside", "interior", "in_temp"]
+
     for entity_id in hass.states.async_entity_ids("sensor"):
         if entity_id in seen_ids:
             continue
@@ -29,19 +39,39 @@ def _scan_weather_entities(hass):
 
         eid_lower = entity_id.lower()
         name_lower = (state.attributes.get("friendly_name", "") or "").lower()
-        matched = any(kw in eid_lower or kw in name_lower for kw in station_keywords)
-        if not matched:
+        attrs = state.attributes
+
+        # Must be from a weather station integration
+        is_station = any(kw in eid_lower or kw in name_lower for kw in station_keywords)
+        if not is_station:
             continue
 
-        attrs = state.attributes
-        has_weather_data = (
-            attrs.get("temperature") is not None
-            or attrs.get("humidity") is not None
-            or "temp" in eid_lower
-            or "weather" in eid_lower
-            or "condition" in eid_lower
-        )
-        if has_weather_data:
+        # Skip indoor sensors
+        is_indoor = any(kw in eid_lower or kw in name_lower for kw in indoor_keywords)
+        if is_indoor:
+            continue
+
+        # Check if this is an outdoor temperature sensor
+        is_outdoor_temp = any(tk in eid_lower for tk in temp_keywords)
+
+        # Also accept if device_class is temperature and it's not clearly something else
+        device_class = attrs.get("device_class", "")
+        if device_class == "temperature" and not is_outdoor_temp:
+            # Accept generic temperature sensors that aren't indoor and have "temp" in name
+            combined = eid_lower + " " + name_lower
+            if "temp" in combined and not any(x in combined for x in
+                    ["feels", "dew", "heat_index", "wind_chill", "soil"]):
+                is_outdoor_temp = True
+
+        # Also accept humidity sensors as secondary option
+        is_humidity = ("humidity" in eid_lower and "indoor" not in eid_lower
+                      and device_class == "humidity")
+
+        if is_outdoor_temp:
+            try:
+                float(state.state)
+            except (ValueError, TypeError):
+                continue
             friendly_name = attrs.get("friendly_name", entity_id)
             weather_entities.append((entity_id, f"Station: {friendly_name}"))
             seen_ids.add(entity_id)
