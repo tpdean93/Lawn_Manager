@@ -3,6 +3,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.helpers.storage import Store
 from homeassistant.helpers.dispatcher import async_dispatcher_send
+from homeassistant.util import dt as dt_util
 import logging
 
 from .const import DOMAIN, CHEMICALS, EQUIPMENT_STORAGE_KEY, STORAGE_VERSION, get_storage_key
@@ -11,7 +12,6 @@ _LOGGER = logging.getLogger(__name__)
 
 
 def _find_zone_entity(hass, entry_id, domain_prefix, suffix):
-    """Find an entity belonging to a specific zone by matching entry_id in the entity_id."""
     for state in hass.states.async_all():
         eid = state.entity_id
         if eid.startswith(domain_prefix) and entry_id in eid and suffix in eid:
@@ -65,18 +65,16 @@ class LogMowButton(ButtonEntity):
 
         application_date_value = application_date.state if application_date else None
 
-        service_data = {
-            "cut_type": activity_type_value,
-            "_zone_entry_id": self._entry.entry_id
-        }
+        service_data = {"cut_type": activity_type_value, "_zone_entry_id": eid}
         if application_date_value:
             service_data["application_date"] = application_date_value
         if height_of_cut_value is not None:
             service_data["height_of_cut"] = height_of_cut_value
 
-        await self._hass.services.async_call(
-            DOMAIN, "log_lawn_activity", service_data, blocking=True
-        )
+        await self._hass.services.async_call(DOMAIN, "log_lawn_activity", service_data, blocking=True)
+
+        # Force update all zone sensors
+        await _force_update_zone_sensors(self._hass, eid)
 
 
 class LogChemicalButton(ButtonEntity):
@@ -117,8 +115,7 @@ class LogChemicalButton(ButtonEntity):
         application_date = self._hass.states.get(application_date_entity) if application_date_entity else None
 
         if equipment_select and equipment_select.state != "None":
-            equipment_type = equipment_select.attributes.get("equipment_type", "sprayer")
-            method = equipment_type.title()
+            method = equipment_select.attributes.get("equipment_type", "sprayer").title()
         elif method_select:
             method = method_select.state
         else:
@@ -126,10 +123,6 @@ class LogChemicalButton(ButtonEntity):
 
         selected_chemical = chemical_select.state if chemical_select else None
         custom_chemical_value = custom_chemical.state if custom_chemical else ""
-        rate_override_value = rate_override.state if rate_override else "Default"
-        custom_rate_value = custom_rate.state if custom_rate else "1.0"
-        custom_rate_unit_value = custom_rate_unit.state if custom_rate_unit else "Multiplier (1.0x = default rate)"
-        application_date_value = application_date.state if application_date else None
 
         if selected_chemical == "Custom" and custom_chemical_value.strip():
             chemical_to_use = custom_chemical_value.strip()
@@ -143,23 +136,20 @@ class LogChemicalButton(ButtonEntity):
             "chemical_select": chemical_to_use if selected_chemical != "Custom" else None,
             "custom_chemical": chemical_to_use if selected_chemical == "Custom" else None,
             "method": method,
-            "rate_override": rate_override_value,
-            "custom_rate": custom_rate_value,
-            "custom_rate_unit": custom_rate_unit_value,
-            "application_date": application_date_value,
-            "_zone_entry_id": self._entry.entry_id
+            "rate_override": rate_override.state if rate_override else "Default",
+            "custom_rate": custom_rate.state if custom_rate else "1.0",
+            "custom_rate_unit": custom_rate_unit.state if custom_rate_unit else "Multiplier (1.0x = default rate)",
+            "application_date": application_date.state if application_date else None,
+            "_zone_entry_id": eid,
         }
 
-        await self._hass.services.async_call(
-            DOMAIN, "log_application",
-            service_data,
-            blocking=True
-        )
+        await self._hass.services.async_call(DOMAIN, "log_application", service_data, blocking=True)
+
+        # Force update all zone sensors
+        await _force_update_zone_sensors(self._hass, eid)
 
 
 class CalculateRateButton(ButtonEntity):
-    """Button to calculate application rate and store result in zone storage."""
-
     def __init__(self, hass, entry):
         self._hass = hass
         self._entry = entry
@@ -200,30 +190,58 @@ class CalculateRateButton(ButtonEntity):
         equipment_name = None
         if equipment_select and equipment_select.state != "None":
             equipment_name = equipment_select.state
-
         if not equipment_name:
             _LOGGER.error("No equipment selected for rate calculation")
             return
 
         zone = self._entry.data.get("yard_zone", "Unknown")
 
-        # Calculate directly and save to zone storage
+        # Calculate directly
         from .services import _calculate_rate_direct
         result = await _calculate_rate_direct(self._hass, chemical, equipment_name, zone)
 
         if result:
-            # Save to zone storage so the RateCalculationSensor can read it
+            # Save to zone storage
             zone_storage_key = get_storage_key(eid)
             store = Store(self._hass, STORAGE_VERSION, zone_storage_key)
             data = await store.async_load() or {}
             data["last_rate_calculation"] = result
             await store.async_save(data)
+            _LOGGER.info("Rate calculation saved to storage for zone %s", eid)
 
-            # Signal sensor to update
-            async_dispatcher_send(
-                self._hass,
-                f"lawn_manager_update_{eid}"
-            )
-            _LOGGER.info("Rate calculation saved: %s", result.get("mixing_instructions", result.get("application_rate", "done")))
+            # Force update all zone sensors
+            await _force_update_zone_sensors(self._hass, eid)
         else:
-            _LOGGER.error("Rate calculation returned no result for %s / %s / %s", chemical, equipment_name, zone)
+            _LOGGER.error("Rate calculation failed for %s / %s / %s", chemical, equipment_name, zone)
+
+
+async def _force_update_zone_sensors(hass, entry_id):
+    """Force update all lawn manager sensor entities for a zone by finding them in the entity registry."""
+    from homeassistant.helpers import entity_registry as er
+
+    try:
+        ent_reg = er.async_get(hass)
+    except Exception:
+        # Fallback to dispatcher
+        async_dispatcher_send(hass, f"lawn_manager_update_{entry_id}")
+        return
+
+    for ent_entry in ent_reg.entities.values():
+        if ent_entry.domain != "sensor" or entry_id not in ent_entry.unique_id:
+            continue
+        if "lawn_manager" not in ent_entry.entity_id:
+            continue
+
+        # Get the actual entity object and call update
+        entity_comp = hass.data.get("entity_components", {}).get("sensor")
+        if entity_comp:
+            entity_obj = entity_comp.get_entity(ent_entry.entity_id)
+            if entity_obj and hasattr(entity_obj, 'async_update'):
+                try:
+                    await entity_obj.async_update()
+                    entity_obj.async_write_ha_state()
+                except Exception as e:
+                    _LOGGER.debug("Could not force update %s: %s", ent_entry.entity_id, e)
+
+    # Also send dispatcher as backup
+    async_dispatcher_send(hass, f"lawn_manager_update_{entry_id}")

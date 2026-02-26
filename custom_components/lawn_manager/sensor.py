@@ -43,6 +43,7 @@ class LawnManagerSensorManager:
         mow_interval = config.get("mow_interval", DEFAULT_MOW_INTERVAL)
 
         weather_entity = config.get("weather_entity")
+        rain_sensor = config.get("rain_sensor")
         grass_type = config.get("grass_type", "Bermuda")
 
         self.mow_sensor = LawnMowSensor(self.entry.entry_id, yard_zone, location, mow_interval, store)
@@ -50,7 +51,7 @@ class LawnManagerSensorManager:
         entities = [self.mow_sensor, self.mow_due_sensor]
 
         if weather_entity:
-            self.weather_sensor = LawnWeatherSensor(self.entry.entry_id, yard_zone, weather_entity, grass_type, location)
+            self.weather_sensor = LawnWeatherSensor(self.entry.entry_id, yard_zone, weather_entity, grass_type, location, rain_sensor)
             entities.append(self.weather_sensor)
 
         if SEASONAL_AVAILABLE:
@@ -662,10 +663,11 @@ class LawnSeasonalSensor(SensorEntity):
 
 
 class LawnWeatherSensor(SensorEntity):
-    def __init__(self, entry_id, yard_zone, weather_entity, grass_type="Bermuda", location="Unknown"):
+    def __init__(self, entry_id, yard_zone, weather_entity, grass_type="Bermuda", location="Unknown", rain_sensor=None):
         self._entry_id = entry_id
         self._yard_zone = yard_zone
         self._weather_entity = weather_entity
+        self._rain_sensor = rain_sensor
         self._grass_type = grass_type
         self._location = location
         self._weather_helper = None
@@ -676,12 +678,40 @@ class LawnWeatherSensor(SensorEntity):
             self._weather_helper = WeatherHelper(self.hass, self._weather_entity)
 
     async def async_update(self):
+        if not self._weather_entity:
+            return
+
+        state = self.hass.states.get(self._weather_entity)
+        if not state:
+            self._current_condition = "unavailable"
+            return
+
+        # weather.* entities have condition as state (cloudy, rainy, etc.)
+        if self._weather_entity.startswith("weather."):
+            self._current_condition = state.state
+        else:
+            # Fallback for sensor entities - try to infer condition
+            self._current_condition = self._infer_condition()
+
+    def _infer_condition(self):
+        """Infer weather condition from available sensor data."""
+        # Check rain sensor first
+        if self._rain_sensor:
+            rain_state = self.hass.states.get(self._rain_sensor)
+            if rain_state:
+                try:
+                    rain = float(rain_state.state)
+                    if rain > 0.1:
+                        return "rainy"
+                except (ValueError, TypeError):
+                    pass
+
         if self._weather_helper:
-            state = self.hass.states.get(self._weather_entity)
-            if state:
-                self._current_condition = state.state
-            else:
-                self._current_condition = "unavailable"
+            humidity = self._weather_helper._get_humidity()
+            if humidity and humidity > 90:
+                return "humid"
+
+        return "clear"
 
     @property
     def name(self):

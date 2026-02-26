@@ -10,7 +10,8 @@
             "mow_interval": "Mowing Schedule",
             "lawn_size_sqft": "Lawn Size (sq ft)",
             "grass_type": "Grass Type",
-            "weather_entity": "Weather Entity (includes AWN weather stations)"
+            "weather_entity": "Weather Entity (for conditions like cloudy/rainy)",
+            "rain_sensor": "Rain Sensor (optional - local station rain data)"
           }
         },
         "custom_grass": {
@@ -51,34 +52,14 @@
       "step": {
         "init": {
           "title": "Reconfigure Zone",
-          "description": "Choose what you'd like to change:",
-          "menu_options": {
-            "zone_settings": "Change Zone Settings (mow interval, lawn size, location)",
-            "weather": "Change Weather Source",
-            "grass": "Change Grass Type"
-          }
-        },
-        "zone_settings": {
-          "title": "Zone Settings",
-          "description": "Update settings for {zone_name}",
+          "description": "Update settings for {zone_name}. Changes take effect after save.",
           "data": {
             "location": "Location",
             "mow_interval": "Mowing Schedule",
-            "lawn_size_sqft": "Lawn Size (sq ft)"
-          }
-        },
-        "weather": {
-          "title": "Weather Source",
-          "description": "Select your weather data source. Includes standard weather entities and AWN weather stations.",
-          "data": {
-            "weather_entity": "Weather Entity"
-          }
-        },
-        "grass": {
-          "title": "Grass Type",
-          "description": "Change your grass type for accurate seasonal recommendations.",
-          "data": {
-            "grass_type": "Grass Type"
+            "lawn_size_sqft": "Lawn Size (sq ft)",
+            "grass_type": "Grass Type",
+            "weather_entity": "Weather Entity",
+            "rain_sensor": "Rain Sensor (optional - local station rain data)"
           }
         }
       }
