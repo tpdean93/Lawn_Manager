@@ -1,7 +1,7 @@
 {
   "domain": "lawn_manager",
   "name": "Lawn Manager",
-  "version": "1.2.3",
+  "version": "1.2.4",
   "documentation": "https://github.com/tpdean93/lawn_manager",
   "codeowners": ["@tpdean93"],
   "requirements": [],
