@@ -7,11 +7,17 @@ import uuid
 from .const import DOMAIN, GRASS_TYPE_LIST, EQUIPMENT_TYPES, EQUIPMENT_BRANDS, CAPACITY_UNITS, STORAGE_VERSION, EQUIPMENT_STORAGE_KEY
 
 def _scan_weather_entities(hass):
-    """Scan for all weather entities including AWN and other weather stations."""
+    """Scan for weather entities and weather station devices.
+    
+    Detects weather stations by finding devices that have BOTH temperature
+    and humidity sensors — works regardless of station name or integration.
+    """
+    from homeassistant.helpers import entity_registry as er, device_registry as dr
+
     weather_entities = []
     seen_ids = set()
 
-    # Standard weather.* entities (always include)
+    # 1. Standard weather.* entities (always include)
     for entity_id in hass.states.async_entity_ids("weather"):
         state = hass.states.get(entity_id)
         if state and entity_id not in seen_ids:
@@ -19,62 +25,83 @@ def _scan_weather_entities(hass):
             weather_entities.append((entity_id, friendly_name))
             seen_ids.add(entity_id)
 
-    # Look for weather station outdoor temperature sensors
-    # These provide the most useful data for lawn care recommendations
-    station_keywords = ["awn", "ambient", "weatherstation", "weather_station",
-                        "tempest", "weatherflow", "acurite", "ecowitt", "weewx"]
+    # 2. Find weather station devices using the entity/device registries
+    #    A weather station = any device with both temperature + humidity sensors
+    try:
+        ent_reg = er.async_get(hass)
+        dev_reg = dr.async_get(hass)
+    except Exception:
+        return weather_entities
 
-    # Words that identify the outdoor temperature sensor specifically
-    temp_keywords = ["outdoor_temperature", "outdoor_temp", "tempf", "temp_outdoor",
-                     "outside_temp", "outside_temperature"]
-    # Also match generic "temperature" but only if NOT indoor
-    indoor_keywords = ["indoor", "inside", "interior", "in_temp"]
+    indoor_keywords = ["indoor", "inside", "interior", "in_temp", "in_humid"]
 
-    for entity_id in hass.states.async_entity_ids("sensor"):
-        if entity_id in seen_ids:
+    # Group sensor entities by device_id, tracking what sensor types each device has
+    device_sensors = {}  # device_id -> {"temp": [entity], "humidity": [entity], ...}
+    for entry in ent_reg.entities.values():
+        if entry.domain != "sensor" or not entry.device_id:
             continue
-        state = hass.states.get(entity_id)
+        if entry.disabled:
+            continue
+
+        eid_lower = entry.entity_id.lower()
+        name_lower = (entry.original_name or entry.name or "").lower()
+
+        # Skip clearly indoor sensors
+        if any(kw in eid_lower or kw in name_lower for kw in indoor_keywords):
+            continue
+
+        dev_class = entry.original_device_class or entry.device_class or ""
+
+        if entry.device_id not in device_sensors:
+            device_sensors[entry.device_id] = {"temp": [], "humidity": [], "wind": [], "pressure": []}
+
+        if dev_class == "temperature":
+            device_sensors[entry.device_id]["temp"].append(entry)
+        elif dev_class == "humidity":
+            device_sensors[entry.device_id]["humidity"].append(entry)
+        elif dev_class == "wind_speed":
+            device_sensors[entry.device_id]["wind"].append(entry)
+        elif dev_class in ("pressure", "atmospheric_pressure"):
+            device_sensors[entry.device_id]["pressure"].append(entry)
+
+    # A weather station device has at least temperature + humidity (outdoor)
+    for device_id, sensors in device_sensors.items():
+        if not sensors["temp"] or not sensors["humidity"]:
+            continue
+
+        device = dev_reg.async_get(device_id)
+        if not device:
+            continue
+
+        device_name = device.name_by_user or device.name or "Weather Station"
+
+        # Pick the best outdoor temperature sensor for this device
+        temp_entity = sensors["temp"][0]
+        for t in sensors["temp"]:
+            t_lower = t.entity_id.lower() + (t.original_name or "").lower()
+            # Prefer ones with "outdoor", "temp", "temperature" and skip feels_like/dew
+            if any(x in t_lower for x in ["outdoor", "outside", "tempf"]):
+                temp_entity = t
+                break
+            if "feels" in t_lower or "dew" in t_lower or "heat_index" in t_lower:
+                continue
+            temp_entity = t
+
+        if temp_entity.entity_id in seen_ids:
+            continue
+
+        # Verify the entity has a valid numeric state
+        state = hass.states.get(temp_entity.entity_id)
         if not state:
             continue
-
-        eid_lower = entity_id.lower()
-        name_lower = (state.attributes.get("friendly_name", "") or "").lower()
-        attrs = state.attributes
-
-        # Must be from a weather station integration
-        is_station = any(kw in eid_lower or kw in name_lower for kw in station_keywords)
-        if not is_station:
+        try:
+            float(state.state)
+        except (ValueError, TypeError):
             continue
 
-        # Skip indoor sensors
-        is_indoor = any(kw in eid_lower or kw in name_lower for kw in indoor_keywords)
-        if is_indoor:
-            continue
-
-        # Check if this is an outdoor temperature sensor
-        is_outdoor_temp = any(tk in eid_lower for tk in temp_keywords)
-
-        # Also accept if device_class is temperature and it's not clearly something else
-        device_class = attrs.get("device_class", "")
-        if device_class == "temperature" and not is_outdoor_temp:
-            # Accept generic temperature sensors that aren't indoor and have "temp" in name
-            combined = eid_lower + " " + name_lower
-            if "temp" in combined and not any(x in combined for x in
-                    ["feels", "dew", "heat_index", "wind_chill", "soil"]):
-                is_outdoor_temp = True
-
-        # Also accept humidity sensors as secondary option
-        is_humidity = ("humidity" in eid_lower and "indoor" not in eid_lower
-                      and device_class == "humidity")
-
-        if is_outdoor_temp:
-            try:
-                float(state.state)
-            except (ValueError, TypeError):
-                continue
-            friendly_name = attrs.get("friendly_name", entity_id)
-            weather_entities.append((entity_id, f"Station: {friendly_name}"))
-            seen_ids.add(entity_id)
+        label = f"Station: {device_name}"
+        weather_entities.append((temp_entity.entity_id, label))
+        seen_ids.add(temp_entity.entity_id)
 
     return weather_entities
 
