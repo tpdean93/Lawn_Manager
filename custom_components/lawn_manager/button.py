@@ -213,16 +213,32 @@ class CalculateRateButton(ButtonEntity):
             "zone": zone,
         }
 
-        result = await self._hass.services.async_call(
-            DOMAIN, "calculate_application_rate",
-            service_data,
-            blocking=True,
-            return_response=True,
-        )
+        try:
+            result = await self._hass.services.async_call(
+                DOMAIN, "calculate_application_rate",
+                service_data,
+                blocking=True,
+                return_response=True,
+            )
+        except Exception:
+            result = None
 
+        # Always fire the dispatcher signal directly with the calculation data
+        # The service may or may not return the result depending on HA version,
+        # so we also call the service handler directly as a fallback
         if result:
             async_dispatcher_send(
                 self._hass,
-                f"lawn_manager_rate_calculated_{self._entry.entry_id}",
+                f"lawn_manager_rate_calculated_{eid}",
                 result
             )
+        else:
+            # Fallback: call the calculation logic directly
+            from .services import _calculate_rate_direct
+            fallback_result = await _calculate_rate_direct(self._hass, chemical, equipment_name, zone)
+            if fallback_result:
+                async_dispatcher_send(
+                    self._hass,
+                    f"lawn_manager_rate_calculated_{eid}",
+                    fallback_result
+                )

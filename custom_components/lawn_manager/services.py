@@ -10,6 +10,73 @@ from .const import DOMAIN, STORAGE_VERSION, CHEMICALS, EQUIPMENT_STORAGE_KEY, EQ
 _LOGGER = logging.getLogger(__name__)
 
 
+async def _calculate_rate_direct(hass, chemical, equipment_name, zone):
+    """Direct calculation helper callable from button without going through service call.
+    Returns the calculation dict or None.
+    """
+    equipment_store = Store(hass, STORAGE_VERSION, EQUIPMENT_STORAGE_KEY)
+    equipment_data = await equipment_store.async_load() or {}
+
+    entries = hass.config_entries.async_entries(DOMAIN)
+    zone_config = None
+    for entry in entries:
+        if entry.data.get("yard_zone") == zone:
+            zone_config = entry.data
+            break
+
+    if not zone_config or not chemical or chemical not in CHEMICALS:
+        return None
+
+    lawn_size_sqft = zone_config.get("lawn_size_sqft", 1000)
+
+    equipment = None
+    for eq_id, eq_info in equipment_data.items():
+        if eq_info.get("friendly_name") == equipment_name:
+            equipment = eq_info
+            break
+
+    if not equipment:
+        return None
+
+    chemical_data = CHEMICALS[chemical]
+    equipment_type = equipment["type"]
+
+    calculation = {
+        "chemical": chemical,
+        "equipment": equipment["friendly_name"],
+        "equipment_type": equipment_type,
+        "zone": zone,
+        "lawn_size_sqft": lawn_size_sqft,
+        "chemical_notes": chemical_data.get("notes", "")
+    }
+
+    if equipment_type == "sprayer" and "liquid_oz_per_1000sqft" in chemical_data:
+        rate = chemical_data["liquid_oz_per_1000sqft"]
+        total_oz = (rate * lawn_size_sqft) / 1000
+        calculation["total_chemical_needed_oz"] = round(total_oz, 3)
+        calculation["application_rate"] = f"{rate} oz per 1,000 sq ft"
+        calculation["total_chemical_kitchen_measurements"] = _convert_oz_to_kitchen_measurements(total_oz)
+
+        eq_cap = equipment["capacity"]
+        cap_unit = equipment["capacity_unit"]
+        if cap_unit in ["gallons", "liters"]:
+            water = chemical_data.get("water_gal_per_1000sqft", 1.0) * lawn_size_sqft / 1000
+            tanks = water / eq_cap
+            chem_per_tank = total_oz / tanks if tanks > 0 else 0
+            calculation["tanks_needed"] = round(tanks, 1)
+            calculation["chemical_per_tank_oz"] = round(chem_per_tank, 3)
+            calculation["kitchen_measurements_per_tank"] = _convert_oz_to_kitchen_measurements(chem_per_tank)
+            calculation["mixing_instructions"] = f"Mix {round(chem_per_tank, 3)} oz of {chemical} per {eq_cap} {cap_unit} tank"
+
+    elif equipment_type == "spreader" and "amount_lb_per_1000sqft" in chemical_data:
+        rate = chemical_data["amount_lb_per_1000sqft"]
+        total_lb = (rate * lawn_size_sqft) / 1000
+        calculation["total_chemical_needed_lb"] = round(total_lb, 2)
+        calculation["application_rate"] = f"{rate} lb per 1,000 sq ft"
+
+    return calculation
+
+
 def _convert_oz_to_kitchen_measurements(oz):
     """Convert ounces to kitchen measurements for easier measuring."""
     cups = oz / 8.0

@@ -6,6 +6,49 @@ import uuid
 
 from .const import DOMAIN, GRASS_TYPE_LIST, EQUIPMENT_TYPES, EQUIPMENT_BRANDS, CAPACITY_UNITS, STORAGE_VERSION, EQUIPMENT_STORAGE_KEY
 
+def _scan_weather_entities(hass):
+    """Scan for all weather entities including AWN and other weather stations."""
+    weather_entities = []
+    seen_ids = set()
+
+    for entity_id in hass.states.async_entity_ids("weather"):
+        state = hass.states.get(entity_id)
+        if state and entity_id not in seen_ids:
+            friendly_name = state.attributes.get("friendly_name", entity_id)
+            weather_entities.append((entity_id, friendly_name))
+            seen_ids.add(entity_id)
+
+    station_keywords = ["awn", "ambient", "weatherstation", "weather_station",
+                        "tempest", "weatherflow", "acurite", "ecowitt", "weewx"]
+    for entity_id in hass.states.async_entity_ids("sensor"):
+        if entity_id in seen_ids:
+            continue
+        state = hass.states.get(entity_id)
+        if not state:
+            continue
+
+        eid_lower = entity_id.lower()
+        name_lower = (state.attributes.get("friendly_name", "") or "").lower()
+        matched = any(kw in eid_lower or kw in name_lower for kw in station_keywords)
+        if not matched:
+            continue
+
+        attrs = state.attributes
+        has_weather_data = (
+            attrs.get("temperature") is not None
+            or attrs.get("humidity") is not None
+            or "temp" in eid_lower
+            or "weather" in eid_lower
+            or "condition" in eid_lower
+        )
+        if has_weather_data:
+            friendly_name = attrs.get("friendly_name", entity_id)
+            weather_entities.append((entity_id, f"Station: {friendly_name}"))
+            seen_ids.add(entity_id)
+
+    return weather_entities
+
+
 MOW_INTERVAL_OPTIONS = {
     3: "Every 3 days (aggressive growth)",
     5: "Every 5 days (active growth)",
@@ -78,27 +121,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         )
 
     def _get_weather_entities(self):
-        weather_entities = []
-        seen_ids = set()
-
-        for entity_id in self.hass.states.async_entity_ids("weather"):
-            state = self.hass.states.get(entity_id)
-            if state and entity_id not in seen_ids:
-                friendly_name = state.attributes.get("friendly_name", entity_id)
-                weather_entities.append((entity_id, friendly_name))
-                seen_ids.add(entity_id)
-
-        for entity_id in self.hass.states.async_entity_ids("sensor"):
-            state = self.hass.states.get(entity_id)
-            if state and entity_id not in seen_ids:
-                if "awn" in entity_id.lower() or "ambient" in entity_id.lower():
-                    attrs = state.attributes
-                    if attrs.get("temperature") is not None or "weather" in entity_id.lower():
-                        friendly_name = attrs.get("friendly_name", entity_id)
-                        weather_entities.append((entity_id, f"AWN: {friendly_name}"))
-                        seen_ids.add(entity_id)
-
-        return weather_entities
+        return _scan_weather_entities(self.hass)
 
     async def async_step_custom_grass(self, user_input=None) -> FlowResult:
         errors = {}
@@ -128,6 +151,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         )
 
     async def async_step_equipment(self, user_input=None) -> FlowResult:
+        """Handle equipment step. For zones with existing equipment, show a simple skip/add choice first."""
         errors = {}
 
         equipment_store = Store(self.hass, STORAGE_VERSION, EQUIPMENT_STORAGE_KEY)
@@ -166,17 +190,38 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     return await self.async_step_equipment()
             elif action == "continue":
                 return await self.async_step_final()
+            elif action == "add_new":
+                return await self.async_step_add_equipment()
 
-        if has_existing:
-            action_options = {
-                "add_equipment": "Add additional equipment",
-                "continue": "Use existing equipment / Continue to next step"
-            }
-        else:
-            action_options = {
-                "add_equipment": "Add this equipment and continue adding",
-                "continue": "Skip adding equipment / Continue to next step"
-            }
+        # If equipment already exists, show simplified choice
+        if has_existing and not self.equipment_list:
+            equip_names = [eq_info.get('friendly_name', eq_id) for eq_id, eq_info in existing_equipment.items()]
+            equip_text = "Your equipment:\n"
+            for name in equip_names:
+                equip_text += f"  - {name}\n"
+            equip_text += "\nEquipment is shared across all zones."
+
+            schema = vol.Schema({
+                vol.Required("action", default="continue"): vol.In({
+                    "continue": "Use existing equipment - Continue",
+                    "add_new": "Add more equipment",
+                }),
+            })
+            return self.async_show_form(
+                step_id="equipment",
+                data_schema=schema,
+                errors=errors,
+                description_placeholders={
+                    "step": "Step 2 of 3: Equipment Setup",
+                    "equipment_list": equip_text,
+                }
+            )
+
+        # No existing equipment or user chose to add more - show full form
+        action_options = {
+            "add_equipment": "Add this equipment and continue adding",
+            "continue": "Done adding equipment / Continue to next step",
+        }
 
         equipment_schema = vol.Schema({
             vol.Optional("equipment_type"): vol.In(EQUIPMENT_TYPES),
@@ -188,12 +233,12 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         equipment_list_text = ""
         if existing_equipment:
-            equipment_list_text += "Your existing equipment (shared across ALL zones):\n"
+            equipment_list_text += "Existing equipment:\n"
             for eq_id, eq_info in existing_equipment.items():
                 equipment_list_text += f"  - {eq_info.get('friendly_name', f'Equipment {eq_id}')}\n"
-            equipment_list_text += "\nThis equipment is already available for all zones.\n\n"
+            equipment_list_text += "\n"
 
-        equipment_list_text += "New equipment being added in this setup:\n"
+        equipment_list_text += "New equipment being added:\n"
         if self.equipment_list:
             for eq in self.equipment_list:
                 equipment_list_text += f"  - {eq['friendly_name']}\n"
@@ -209,6 +254,10 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 "equipment_list": equipment_list_text
             }
         )
+
+    async def async_step_add_equipment(self, user_input=None) -> FlowResult:
+        """Show full equipment add form after user chose to add more."""
+        return await self.async_step_equipment()
 
     async def async_step_final(self, user_input=None) -> FlowResult:
         if user_input is not None:
@@ -318,25 +367,7 @@ class OptionsFlow(config_entries.OptionsFlow):
 
             return self.async_create_entry(title="", data={})
 
-        weather_entities = []
-        seen_ids = set()
-
-        for entity_id in self.hass.states.async_entity_ids("weather"):
-            state = self.hass.states.get(entity_id)
-            if state and entity_id not in seen_ids:
-                friendly_name = state.attributes.get("friendly_name", entity_id)
-                weather_entities.append((entity_id, friendly_name))
-                seen_ids.add(entity_id)
-
-        for entity_id in self.hass.states.async_entity_ids("sensor"):
-            state = self.hass.states.get(entity_id)
-            if state and entity_id not in seen_ids:
-                if "awn" in entity_id.lower() or "ambient" in entity_id.lower():
-                    attrs = state.attributes
-                    if attrs.get("temperature") is not None or "weather" in entity_id.lower():
-                        friendly_name = attrs.get("friendly_name", entity_id)
-                        weather_entities.append((entity_id, f"AWN: {friendly_name}"))
-                        seen_ids.add(entity_id)
+        weather_entities = _scan_weather_entities(self.hass)
 
         weather_options = [("", "None")] + weather_entities
         current_weather = self.config_entry.data.get("weather_entity", "")
