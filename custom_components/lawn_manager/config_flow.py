@@ -21,9 +21,12 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     VERSION = 1
 
     def __init__(self):
-        """Initialize the config flow."""
         self.user_data = {}
         self.equipment_list = []
+
+    @staticmethod
+    def async_get_options_flow(config_entry):
+        return OptionsFlow(config_entry)
 
     async def async_step_user(self, user_input=None) -> FlowResult:
         errors = {}
@@ -47,29 +50,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
             return await self.async_step_equipment()
 
-        weather_entities = []
-        for entity_id in self.hass.states.async_entity_ids("weather"):
-            state = self.hass.states.get(entity_id)
-            if state:
-                friendly_name = state.attributes.get("friendly_name", entity_id)
-                weather_entities.append((entity_id, friendly_name))
-
-        # Also look for AWN (Ambient Weather Network) weather stations
-        for entity_id in self.hass.states.async_entity_ids("sensor"):
-            state = self.hass.states.get(entity_id)
-            if state and ("awn" in entity_id.lower() or "ambient" in entity_id.lower()):
-                attrs = state.attributes
-                if attrs.get("temperature") is not None or "weather" in entity_id.lower():
-                    friendly_name = attrs.get("friendly_name", entity_id)
-                    weather_entities.append((entity_id, f"AWN: {friendly_name}"))
-
-        # Also look for Weather Station entities (various integrations)
-        for entity_id in self.hass.states.async_entity_ids("weather"):
-            if entity_id not in [w[0] for w in weather_entities]:
-                state = self.hass.states.get(entity_id)
-                if state:
-                    friendly_name = state.attributes.get("friendly_name", entity_id)
-                    weather_entities.append((entity_id, friendly_name))
+        weather_entities = self._get_weather_entities()
 
         schema_dict = {
             vol.Required("yard_zone"): str,
@@ -96,8 +77,30 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             }
         )
 
+    def _get_weather_entities(self):
+        weather_entities = []
+        seen_ids = set()
+
+        for entity_id in self.hass.states.async_entity_ids("weather"):
+            state = self.hass.states.get(entity_id)
+            if state and entity_id not in seen_ids:
+                friendly_name = state.attributes.get("friendly_name", entity_id)
+                weather_entities.append((entity_id, friendly_name))
+                seen_ids.add(entity_id)
+
+        for entity_id in self.hass.states.async_entity_ids("sensor"):
+            state = self.hass.states.get(entity_id)
+            if state and entity_id not in seen_ids:
+                if "awn" in entity_id.lower() or "ambient" in entity_id.lower():
+                    attrs = state.attributes
+                    if attrs.get("temperature") is not None or "weather" in entity_id.lower():
+                        friendly_name = attrs.get("friendly_name", entity_id)
+                        weather_entities.append((entity_id, f"AWN: {friendly_name}"))
+                        seen_ids.add(entity_id)
+
+        return weather_entities
+
     async def async_step_custom_grass(self, user_input=None) -> FlowResult:
-        """Handle custom grass type configuration."""
         errors = {}
 
         if user_input is not None:
@@ -125,12 +128,10 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         )
 
     async def async_step_equipment(self, user_input=None) -> FlowResult:
-        """Handle equipment collection step."""
         errors = {}
 
         equipment_store = Store(self.hass, STORAGE_VERSION, EQUIPMENT_STORAGE_KEY)
         existing_equipment = await equipment_store.async_load() or {}
-
         has_existing = bool(existing_equipment)
 
         if user_input is not None:
@@ -138,18 +139,18 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
             if action == "add_equipment":
                 if not user_input.get("equipment_type"):
-                    errors["equipment_type"] = "Equipment type is required when adding equipment"
+                    errors["equipment_type"] = "Equipment type is required"
                 if not user_input.get("brand"):
-                    errors["brand"] = "Brand is required when adding equipment"
+                    errors["brand"] = "Brand is required"
                 if not user_input.get("capacity_unit"):
-                    errors["capacity_unit"] = "Capacity unit is required when adding equipment"
+                    errors["capacity_unit"] = "Capacity unit is required"
 
                 try:
                     capacity = float(user_input["capacity"])
                     if capacity < 0.1:
                         errors["capacity"] = "Capacity must be at least 0.1"
                 except (ValueError, TypeError):
-                    errors["capacity"] = "Capacity is required when adding equipment"
+                    errors["capacity"] = "Capacity is required"
 
                 if not errors:
                     equipment_id = str(uuid.uuid4())[:8]
@@ -186,12 +187,11 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         })
 
         equipment_list_text = ""
-
         if existing_equipment:
             equipment_list_text += "Your existing equipment (shared across ALL zones):\n"
             for eq_id, eq_info in existing_equipment.items():
                 equipment_list_text += f"  - {eq_info.get('friendly_name', f'Equipment {eq_id}')}\n"
-            equipment_list_text += "\nThis equipment is already available for all zones. You can add more below if needed.\n\n"
+            equipment_list_text += "\nThis equipment is already available for all zones.\n\n"
 
         equipment_list_text += "New equipment being added in this setup:\n"
         if self.equipment_list:
@@ -199,12 +199,6 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 equipment_list_text += f"  - {eq['friendly_name']}\n"
         else:
             equipment_list_text += "  None added yet\n"
-
-        if has_existing:
-            equipment_list_text += "\nYou already have equipment set up. Select 'Use existing equipment' to continue, or add more."
-        else:
-            equipment_list_text += "\nTo add equipment: Fill out all fields above, then select 'Add this equipment'"
-            equipment_list_text += "\nTo skip: Just select 'Skip adding equipment'"
 
         return self.async_show_form(
             step_id="equipment",
@@ -217,11 +211,9 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         )
 
     async def async_step_final(self, user_input=None) -> FlowResult:
-        """Handle final confirmation and setup."""
         if user_input is not None:
             final_data = self.user_data.copy()
             final_data["equipment_list"] = self.equipment_list
-
             return self.async_create_entry(
                 title=self.user_data["yard_zone"],
                 data=final_data
@@ -241,8 +233,6 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             for eq in self.equipment_list:
                 summary += f"  - {eq['friendly_name']}\n"
 
-        summary += "\nIMPORTANT: After setup completes, restart Home Assistant to enable equipment dropdowns in services!"
-
         return self.async_show_form(
             step_id="final",
             data_schema=vol.Schema({
@@ -252,4 +242,137 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 "step": "Step 3 of 3: Confirmation",
                 "summary": summary
             }
+        )
+
+
+class OptionsFlow(config_entries.OptionsFlow):
+    """Handle options flow for reconfiguring a zone."""
+
+    def __init__(self, config_entry):
+        self.config_entry = config_entry
+
+    async def async_step_init(self, user_input=None) -> FlowResult:
+        """Show the main options menu."""
+        return self.async_show_menu(
+            step_id="init",
+            menu_options={
+                "zone_settings": "Change Zone Settings (mow interval, lawn size, location)",
+                "weather": "Change Weather Source",
+                "grass": "Change Grass Type",
+            }
+        )
+
+    async def async_step_zone_settings(self, user_input=None) -> FlowResult:
+        """Allow changing zone settings."""
+        if user_input is not None:
+            mow_interval = user_input.get("mow_interval", self.config_entry.data.get("mow_interval", 7))
+            if isinstance(mow_interval, str):
+                mow_interval = int(mow_interval)
+
+            new_data = {**self.config_entry.data}
+            new_data["location"] = user_input.get("location", new_data.get("location", ""))
+            new_data["mow_interval"] = mow_interval
+            new_data["lawn_size_sqft"] = user_input.get("lawn_size_sqft", new_data.get("lawn_size_sqft", 1000))
+
+            self.hass.config_entries.async_update_entry(
+                self.config_entry,
+                data=new_data,
+                title=new_data.get("yard_zone", self.config_entry.title),
+            )
+            await self.hass.config_entries.async_reload(self.config_entry.entry_id)
+
+            return self.async_create_entry(title="", data={})
+
+        current = self.config_entry.data
+        current_interval = str(current.get("mow_interval", 7))
+
+        data_schema = vol.Schema({
+            vol.Required("location", default=current.get("location", "")): str,
+            vol.Required("mow_interval", default=current_interval): vol.In(
+                {str(k): v for k, v in MOW_INTERVAL_OPTIONS.items()}
+            ),
+            vol.Required("lawn_size_sqft", default=current.get("lawn_size_sqft", 1000)): vol.All(
+                vol.Coerce(int), vol.Range(min=100, max=100000)
+            ),
+        })
+
+        return self.async_show_form(
+            step_id="zone_settings",
+            data_schema=data_schema,
+            description_placeholders={
+                "zone_name": current.get("yard_zone", "Zone"),
+            }
+        )
+
+    async def async_step_weather(self, user_input=None) -> FlowResult:
+        """Allow changing weather source."""
+        if user_input is not None:
+            new_data = {**self.config_entry.data}
+            new_data["weather_entity"] = user_input.get("weather_entity", "")
+
+            self.hass.config_entries.async_update_entry(
+                self.config_entry,
+                data=new_data,
+            )
+            await self.hass.config_entries.async_reload(self.config_entry.entry_id)
+
+            return self.async_create_entry(title="", data={})
+
+        weather_entities = []
+        seen_ids = set()
+
+        for entity_id in self.hass.states.async_entity_ids("weather"):
+            state = self.hass.states.get(entity_id)
+            if state and entity_id not in seen_ids:
+                friendly_name = state.attributes.get("friendly_name", entity_id)
+                weather_entities.append((entity_id, friendly_name))
+                seen_ids.add(entity_id)
+
+        for entity_id in self.hass.states.async_entity_ids("sensor"):
+            state = self.hass.states.get(entity_id)
+            if state and entity_id not in seen_ids:
+                if "awn" in entity_id.lower() or "ambient" in entity_id.lower():
+                    attrs = state.attributes
+                    if attrs.get("temperature") is not None or "weather" in entity_id.lower():
+                        friendly_name = attrs.get("friendly_name", entity_id)
+                        weather_entities.append((entity_id, f"AWN: {friendly_name}"))
+                        seen_ids.add(entity_id)
+
+        weather_options = [("", "None")] + weather_entities
+        current_weather = self.config_entry.data.get("weather_entity", "")
+
+        data_schema = vol.Schema({
+            vol.Optional("weather_entity", default=current_weather): vol.In(
+                {k: v for k, v in weather_options}
+            ),
+        })
+
+        return self.async_show_form(
+            step_id="weather",
+            data_schema=data_schema,
+        )
+
+    async def async_step_grass(self, user_input=None) -> FlowResult:
+        """Allow changing grass type."""
+        if user_input is not None:
+            new_data = {**self.config_entry.data}
+            new_data["grass_type"] = user_input.get("grass_type", "Bermuda")
+
+            self.hass.config_entries.async_update_entry(
+                self.config_entry,
+                data=new_data,
+            )
+            await self.hass.config_entries.async_reload(self.config_entry.entry_id)
+
+            return self.async_create_entry(title="", data={})
+
+        current_grass = self.config_entry.data.get("grass_type", "Bermuda")
+
+        data_schema = vol.Schema({
+            vol.Required("grass_type", default=current_grass): vol.In(GRASS_TYPE_LIST),
+        })
+
+        return self.async_show_form(
+            step_id="grass",
+            data_schema=data_schema,
         )
