@@ -10,6 +10,15 @@ from .const import DOMAIN, CHEMICALS, EQUIPMENT_STORAGE_KEY, STORAGE_VERSION
 _LOGGER = logging.getLogger(__name__)
 
 
+def _find_zone_entity(hass, entry_id, domain_prefix, suffix):
+    """Find an entity belonging to a specific zone by matching entry_id in the entity_id."""
+    for state in hass.states.async_all():
+        eid = state.entity_id
+        if eid.startswith(domain_prefix) and entry_id in eid and suffix in eid:
+            return eid
+    return None
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities):
     entities = [
         LogMowButton(hass, entry),
@@ -37,18 +46,10 @@ class LogMowButton(ButtonEntity):
         }
 
     async def async_press(self):
-        activity_type_entity = None
-        height_of_cut_entity = None
-        application_date_entity = None
-
-        for state in self._hass.states.async_all():
-            entity_id = state.entity_id
-            if entity_id.startswith("select.") and "activity_type_selection" in entity_id:
-                activity_type_entity = entity_id
-            elif entity_id.startswith("number.") and "height_of_cut" in entity_id:
-                height_of_cut_entity = entity_id
-            elif entity_id.startswith("date.") and "application_date" in entity_id:
-                application_date_entity = entity_id
+        eid = self._entry.entry_id
+        activity_type_entity = _find_zone_entity(self._hass, eid, "select.", "activity_type_selection")
+        height_of_cut_entity = _find_zone_entity(self._hass, eid, "number.", "height_of_cut")
+        application_date_entity = _find_zone_entity(self._hass, eid, "date.", "application_date")
 
         activity_type = self._hass.states.get(activity_type_entity) if activity_type_entity else None
         height_of_cut = self._hass.states.get(height_of_cut_entity) if height_of_cut_entity else None
@@ -96,33 +97,15 @@ class LogChemicalButton(ButtonEntity):
         }
 
     async def async_press(self):
-        chemical_select_entity = None
-        custom_chemical_entity = None
-        method_select_entity = None
-        equipment_select_entity = None
-        rate_override_entity = None
-        custom_rate_entity = None
-        custom_rate_unit_entity = None
-        application_date_entity = None
-
-        for state in self._hass.states.async_all():
-            entity_id = state.entity_id
-            if entity_id.startswith("select.") and "chemical_selection" in entity_id:
-                chemical_select_entity = entity_id
-            elif entity_id.startswith("text.") and "custom_chemical_name" in entity_id:
-                custom_chemical_entity = entity_id
-            elif entity_id.startswith("select.") and "application_method" in entity_id:
-                method_select_entity = entity_id
-            elif entity_id.startswith("select.") and "equipment_select" in entity_id:
-                equipment_select_entity = entity_id
-            elif entity_id.startswith("select.") and "application_rate" in entity_id:
-                rate_override_entity = entity_id
-            elif entity_id.startswith("text.") and "custom_rate_multiplier" in entity_id:
-                custom_rate_entity = entity_id
-            elif entity_id.startswith("select.") and "custom_rate_unit" in entity_id:
-                custom_rate_unit_entity = entity_id
-            elif entity_id.startswith("date.") and "application_date" in entity_id:
-                application_date_entity = entity_id
+        eid = self._entry.entry_id
+        chemical_select_entity = _find_zone_entity(self._hass, eid, "select.", "chemical_selection")
+        custom_chemical_entity = _find_zone_entity(self._hass, eid, "text.", "custom_chemical_name")
+        method_select_entity = _find_zone_entity(self._hass, eid, "select.", "application_method")
+        equipment_select_entity = _find_zone_entity(self._hass, eid, "select.", "equipment_select")
+        rate_override_entity = _find_zone_entity(self._hass, eid, "select.", "application_rate")
+        custom_rate_entity = _find_zone_entity(self._hass, eid, "text.", "custom_rate_multiplier")
+        custom_rate_unit_entity = _find_zone_entity(self._hass, eid, "select.", "custom_rate_unit")
+        application_date_entity = _find_zone_entity(self._hass, eid, "date.", "application_date")
 
         chemical_select = self._hass.states.get(chemical_select_entity) if chemical_select_entity else None
         custom_chemical = self._hass.states.get(custom_chemical_entity) if custom_chemical_entity else None
@@ -133,7 +116,6 @@ class LogChemicalButton(ButtonEntity):
         custom_rate_unit = self._hass.states.get(custom_rate_unit_entity) if custom_rate_unit_entity else None
         application_date = self._hass.states.get(application_date_entity) if application_date_entity else None
 
-        # Determine application method
         if equipment_select and equipment_select.state != "None":
             equipment_type = equipment_select.attributes.get("equipment_type", "sprayer")
             method = equipment_type.title()
@@ -195,19 +177,10 @@ class CalculateRateButton(ButtonEntity):
         }
 
     async def async_press(self):
-        """Calculate application rate from current control selections."""
-        chemical_select_entity = None
-        custom_chemical_entity = None
-        equipment_select_entity = None
-
-        for state in self._hass.states.async_all():
-            entity_id = state.entity_id
-            if entity_id.startswith("select.") and "chemical_selection" in entity_id:
-                chemical_select_entity = entity_id
-            elif entity_id.startswith("text.") and "custom_chemical_name" in entity_id:
-                custom_chemical_entity = entity_id
-            elif entity_id.startswith("select.") and "equipment_select" in entity_id:
-                equipment_select_entity = entity_id
+        eid = self._entry.entry_id
+        chemical_select_entity = _find_zone_entity(self._hass, eid, "select.", "chemical_selection")
+        custom_chemical_entity = _find_zone_entity(self._hass, eid, "text.", "custom_chemical_name")
+        equipment_select_entity = _find_zone_entity(self._hass, eid, "select.", "equipment_select")
 
         chemical_select = self._hass.states.get(chemical_select_entity) if chemical_select_entity else None
         custom_chemical = self._hass.states.get(custom_chemical_entity) if custom_chemical_entity else None
@@ -240,8 +213,6 @@ class CalculateRateButton(ButtonEntity):
             "zone": zone,
         }
 
-        _LOGGER.info("Calculating application rate: %s", service_data)
-
         result = await self._hass.services.async_call(
             DOMAIN, "calculate_application_rate",
             service_data,
@@ -250,10 +221,8 @@ class CalculateRateButton(ButtonEntity):
         )
 
         if result:
-            # Store the calculation result in a sensor via dispatcher
             async_dispatcher_send(
                 self._hass,
                 f"lawn_manager_rate_calculated_{self._entry.entry_id}",
                 result
             )
-            _LOGGER.info("Application rate calculated: %s", result)
