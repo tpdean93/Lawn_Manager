@@ -14,6 +14,8 @@ DEFAULT_MOW_INTERVAL = 7
 # STORAGE_KEY = "lawn_manager_data" # OLD - shared across all zones
 # Now we need zone-specific storage - use get_storage_key(entry_id) function instead
 EQUIPMENT_STORAGE_KEY = "lawn_manager_equipment"
+CUSTOM_PRODUCTS_STORAGE_KEY = "lawn_manager_custom_products"
+MAINTENANCE_LOG_STORAGE_KEY = "lawn_manager_maintenance_log"
 STORAGE_VERSION = 1
 
 # Equipment management constants

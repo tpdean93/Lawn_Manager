@@ -226,3 +226,162 @@ calculate_application_rate:
 clear_equipment_storage:
   name: Clear Equipment Storage
   description: Clear all equipment storage (debug only).
+
+add_custom_product:
+  name: Add Custom Product
+  description: "Add a custom chemical/product to your shared inventory. These are available across all zones."
+  fields:
+    product_name:
+      name: Product Name
+      description: "Name of the product (e.g., 'Milorganite 6-4-0', 'GreenMax 16-3-8')"
+      required: true
+      selector:
+        text:
+    product_type:
+      name: Product Type
+      description: Type of product
+      required: false
+      default: fertilizer
+      selector:
+        select:
+          options:
+            - fertilizer
+            - herbicide
+            - insecticide
+            - fungicide
+            - soil_amendment
+            - pgr
+            - other
+    rate_oz_per_1000sqft:
+      name: Liquid Rate (oz per 1,000 sq ft)
+      description: "Liquid application rate in ounces per 1,000 sq ft (for sprayer use)"
+      required: false
+      selector:
+        number:
+          min: 0.01
+          max: 100
+          step: 0.01
+          unit_of_measurement: oz
+    rate_lb_per_1000sqft:
+      name: Granular Rate (lb per 1,000 sq ft)
+      description: "Granular application rate in pounds per 1,000 sq ft (for spreader use)"
+      required: false
+      selector:
+        number:
+          min: 0.1
+          max: 100
+          step: 0.1
+          unit_of_measurement: lb
+    interval_days:
+      name: Re-application Interval (days)
+      description: "Recommended days between applications"
+      required: false
+      default: 30
+      selector:
+        number:
+          min: 1
+          max: 365
+          step: 1
+    application_method:
+      name: Application Method
+      description: Preferred application method
+      required: false
+      default: any
+      selector:
+        select:
+          options:
+            - any
+            - sprayer
+            - spreader
+            - hand
+    notes:
+      name: Notes
+      description: Additional product notes or instructions
+      required: false
+      selector:
+        text:
+          multiline: true
+
+list_custom_products:
+  name: List Custom Products
+  description: "List all custom products in your inventory."
+
+delete_custom_product:
+  name: Delete Custom Product
+  description: "Delete a custom product by ID."
+  fields:
+    product_id:
+      name: Product ID
+      description: "Product ID to delete (use list_custom_products to find IDs)"
+      required: true
+      selector:
+        text:
+
+log_maintenance:
+  name: Log Equipment Maintenance
+  description: "Log an equipment maintenance activity (blade sharpening, oil change, etc.)"
+  fields:
+    equipment_name:
+      name: Equipment Name
+      description: "Name of the equipment maintained"
+      required: true
+      selector:
+        text:
+    maintenance_type:
+      name: Maintenance Type
+      description: Type of maintenance performed
+      required: true
+      selector:
+        select:
+          options:
+            - Blade Sharpening
+            - Oil Change
+            - Air Filter
+            - Spark Plug
+            - Belt Replacement
+            - Tire/Wheel Service
+            - Cleaning
+            - Winterization
+            - Spring Prep
+            - Calibration
+            - Nozzle Replacement
+            - General Service
+            - Other
+    maintenance_date:
+      name: Date
+      description: "Date maintenance was performed (defaults to today)"
+      required: false
+      selector:
+        date:
+    notes:
+      name: Notes
+      description: Additional details about the maintenance
+      required: false
+      selector:
+        text:
+          multiline: true
+    cost:
+      name: Cost
+      description: "Cost of maintenance (optional)"
+      required: false
+      selector:
+        number:
+          min: 0
+          max: 10000
+          step: 0.01
+          unit_of_measurement: "$"
+
+get_maintenance_log:
+  name: Get Maintenance Log
+  description: "View the equipment maintenance log."
+  fields:
+    equipment_name:
+      name: Equipment Name (Filter)
+      description: "Optional: filter by equipment name"
+      required: false
+      selector:
+        text:
+
+get_activity_history:
+  name: Get Activity History
+  description: "Get unified activity history across all zones - mowing, chemicals, and maintenance in one view."
