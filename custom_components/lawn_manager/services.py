@@ -5,7 +5,7 @@ from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 import uuid
 
-from .const import DOMAIN, STORAGE_VERSION, CHEMICALS, EQUIPMENT_STORAGE_KEY, EQUIPMENT_TYPES
+from .const import DOMAIN, STORAGE_VERSION, CHEMICALS, EQUIPMENT_STORAGE_KEY, EQUIPMENT_TYPES, CUSTOM_PRODUCTS_STORAGE_KEY, MAINTENANCE_LOG_STORAGE_KEY
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -333,6 +333,173 @@ async def async_register_services(hass: HomeAssistant) -> None:
         _LOGGER.info("Clearing %d equipment entries", len(equipment_data))
         await equipment_store.async_remove()
 
+    # --- Custom Products Inventory ---
+    products_store = Store(hass, STORAGE_VERSION, CUSTOM_PRODUCTS_STORAGE_KEY)
+
+    async def handle_add_custom_product(call: ServiceCall):
+        """Add a custom product to the shared inventory."""
+        product_name = call.data.get("product_name", "").strip()
+        product_type = call.data.get("product_type", "other")
+        rate_oz_per_1000sqft = call.data.get("rate_oz_per_1000sqft")
+        rate_lb_per_1000sqft = call.data.get("rate_lb_per_1000sqft")
+        interval_days = call.data.get("interval_days", 30)
+        notes = call.data.get("notes", "")
+        application_method = call.data.get("application_method", "any")
+
+        if not product_name:
+            _LOGGER.error("Product name required")
+            return {"error": "Product name is required"}
+
+        products_data = await products_store.async_load() or {}
+        product_id = str(uuid.uuid4())[:8]
+
+        product_entry = {
+            "name": product_name,
+            "type": product_type,
+            "interval_days": int(interval_days),
+            "notes": notes,
+            "application_method": application_method,
+            "created": dt_util.now().strftime("%Y-%m-%d %H:%M:%S"),
+        }
+
+        if rate_oz_per_1000sqft is not None:
+            product_entry["liquid_oz_per_1000sqft"] = float(rate_oz_per_1000sqft)
+        if rate_lb_per_1000sqft is not None:
+            product_entry["amount_lb_per_1000sqft"] = float(rate_lb_per_1000sqft)
+
+        products_data[product_id] = product_entry
+        await products_store.async_save(products_data)
+
+        _LOGGER.info("Custom product added: %s (ID: %s)", product_name, product_id)
+        return {"product_id": product_id, "product": product_entry}
+
+    async def handle_list_custom_products(call: ServiceCall):
+        """List all custom products."""
+        products_data = await products_store.async_load() or {}
+        products_list = []
+        for pid, pdata in products_data.items():
+            products_list.append({"id": pid, **pdata})
+        return {"products": products_list, "count": len(products_list)}
+
+    async def handle_delete_custom_product(call: ServiceCall):
+        """Delete a custom product by ID."""
+        product_id = call.data.get("product_id", "").strip()
+        if not product_id:
+            return {"error": "Product ID required"}
+
+        products_data = await products_store.async_load() or {}
+        if product_id in products_data:
+            name = products_data[product_id].get("name", product_id)
+            del products_data[product_id]
+            await products_store.async_save(products_data)
+            _LOGGER.info("Deleted custom product: %s", name)
+            return {"deleted": name}
+        else:
+            return {"error": f"Product ID '{product_id}' not found"}
+
+    # --- Equipment Maintenance Log ---
+    maintenance_store = Store(hass, STORAGE_VERSION, MAINTENANCE_LOG_STORAGE_KEY)
+
+    async def handle_log_maintenance(call: ServiceCall):
+        """Log an equipment maintenance activity."""
+        equipment_name = call.data.get("equipment_name", "").strip()
+        maintenance_type = call.data.get("maintenance_type", "General")
+        maintenance_date = call.data.get("maintenance_date")
+        notes = call.data.get("notes", "")
+        cost = call.data.get("cost")
+
+        if not equipment_name:
+            return {"error": "Equipment name required"}
+
+        if maintenance_date:
+            date_str = str(maintenance_date)
+        else:
+            date_str = dt_util.now().strftime("%Y-%m-%d")
+
+        maintenance_data = await maintenance_store.async_load() or {"log": []}
+        if "log" not in maintenance_data:
+            maintenance_data["log"] = []
+
+        entry = {
+            "id": str(uuid.uuid4())[:8],
+            "equipment": equipment_name,
+            "type": maintenance_type,
+            "date": date_str,
+            "notes": notes,
+            "timestamp": dt_util.now().isoformat(),
+        }
+        if cost is not None:
+            entry["cost"] = float(cost)
+
+        maintenance_data["log"].append(entry)
+
+        if len(maintenance_data["log"]) > 200:
+            maintenance_data["log"] = maintenance_data["log"][-200:]
+
+        await maintenance_store.async_save(maintenance_data)
+        _LOGGER.info("Maintenance logged: %s - %s on %s", equipment_name, maintenance_type, date_str)
+
+        from homeassistant.helpers.dispatcher import async_dispatcher_send
+        async_dispatcher_send(hass, "lawn_manager_maintenance_update")
+
+        return entry
+
+    async def handle_get_maintenance_log(call: ServiceCall):
+        """Get the full maintenance log."""
+        maintenance_data = await maintenance_store.async_load() or {"log": []}
+        log = maintenance_data.get("log", [])
+        equipment_filter = call.data.get("equipment_name", "").strip()
+        if equipment_filter:
+            log = [e for e in log if e.get("equipment", "").lower() == equipment_filter.lower()]
+        return {"log": log, "count": len(log)}
+
+    async def handle_get_activity_history(call: ServiceCall):
+        """Get unified activity history across all zones."""
+        from .const import get_storage_key
+        entries = hass.config_entries.async_entries(DOMAIN)
+        all_activities = []
+
+        for config_entry in entries:
+            zone = config_entry.data.get("yard_zone", "Unknown")
+            zone_key = get_storage_key(config_entry.entry_id)
+            zone_store = Store(hass, STORAGE_VERSION, zone_key)
+            zone_data = await zone_store.async_load() or {}
+
+            for mow in zone_data.get("mowing_history", []):
+                all_activities.append({
+                    "zone": zone,
+                    "category": "mowing",
+                    "activity": mow.get("cut_type", "Mow"),
+                    "date": mow.get("date", ""),
+                    "details": f"HOC: {mow.get('height_of_cut_inches', 'N/A')} in" if "height_of_cut_inches" in mow else "",
+                    "timestamp": mow.get("timestamp", ""),
+                })
+
+            for chem_name, chem_data in zone_data.get("applications", {}).items():
+                all_activities.append({
+                    "zone": zone,
+                    "category": "chemical",
+                    "activity": chem_name,
+                    "date": chem_data.get("last_applied", ""),
+                    "details": f"{chem_data.get('rate_description', 'Default')} via {chem_data.get('method', '?')}",
+                    "timestamp": chem_data.get("last_applied", ""),
+                })
+
+        maintenance_data = await maintenance_store.async_load() or {"log": []}
+        for m in maintenance_data.get("log", []):
+            all_activities.append({
+                "zone": "Equipment",
+                "category": "maintenance",
+                "activity": f"{m.get('type', 'Maintenance')} - {m.get('equipment', '?')}",
+                "date": m.get("date", ""),
+                "details": m.get("notes", ""),
+                "timestamp": m.get("timestamp", ""),
+            })
+
+        all_activities.sort(key=lambda x: x.get("timestamp", ""), reverse=True)
+
+        return {"activities": all_activities[:100], "total_count": len(all_activities)}
+
     # Register all services
     if not hass.services.has_service(DOMAIN, "add_equipment"):
         hass.services.async_register(DOMAIN, "add_equipment", handle_add_equipment)
@@ -350,3 +517,15 @@ async def async_register_services(hass: HomeAssistant) -> None:
         hass.services.async_register(DOMAIN, "calculate_application_rate", handle_calculate_application_rate, supports_response=True)
     if not hass.services.has_service(DOMAIN, "clear_equipment_storage"):
         hass.services.async_register(DOMAIN, "clear_equipment_storage", handle_clear_equipment_storage)
+    if not hass.services.has_service(DOMAIN, "add_custom_product"):
+        hass.services.async_register(DOMAIN, "add_custom_product", handle_add_custom_product, supports_response=True)
+    if not hass.services.has_service(DOMAIN, "list_custom_products"):
+        hass.services.async_register(DOMAIN, "list_custom_products", handle_list_custom_products, supports_response=True)
+    if not hass.services.has_service(DOMAIN, "delete_custom_product"):
+        hass.services.async_register(DOMAIN, "delete_custom_product", handle_delete_custom_product, supports_response=True)
+    if not hass.services.has_service(DOMAIN, "log_maintenance"):
+        hass.services.async_register(DOMAIN, "log_maintenance", handle_log_maintenance, supports_response=True)
+    if not hass.services.has_service(DOMAIN, "get_maintenance_log"):
+        hass.services.async_register(DOMAIN, "get_maintenance_log", handle_get_maintenance_log, supports_response=True)
+    if not hass.services.has_service(DOMAIN, "get_activity_history"):
+        hass.services.async_register(DOMAIN, "get_activity_history", handle_get_activity_history, supports_response=True)
