@@ -14,6 +14,17 @@ STORAGE_KEY = "lawn_manager_data"
 STORAGE_VERSION = 1
 
 
+def get_zone_store_and_data(hass, entry_id):
+    """Get the shared Store and data dict for a zone from hass.data.
+
+    Returns (store, data) or (None, None) if not initialized yet.
+    """
+    zone_info = hass.data.get(DOMAIN, {}).get(entry_id)
+    if zone_info:
+        return zone_info["store"], zone_info["data"]
+    return None, None
+
+
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     return True
 
@@ -48,22 +59,30 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     await _store_equipment_from_config(hass, entry)
 
-    await _register_services(hass)
-
-    from .services import async_register_services
-    await async_register_services(hass)
+    hass.data.setdefault(DOMAIN, {})
 
     storage_key = get_storage_key(entry.entry_id)
-    store = Store(hass, 1, storage_key)
+    store = Store(hass, STORAGE_VERSION, storage_key)
     data = await store.async_load() or {}
 
     if not data:
         data = {
             "last_mow": None,
             "mowing_history": [],
-            "applications": {}
+            "applications": {},
+            "application_history": [],
         }
         await store.async_save(data)
+
+    hass.data[DOMAIN][entry.entry_id] = {
+        "store": store,
+        "data": data,
+    }
+
+    await _register_services(hass)
+
+    from .services import async_register_services
+    await async_register_services(hass)
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
@@ -92,9 +111,11 @@ async def _register_services(hass: HomeAssistant):
             _LOGGER.error("Invalid zone ID: %s", zone_entry_id)
             return
 
-        zone_storage_key = get_storage_key(zone_entry_id)
-        store = Store(hass, STORAGE_VERSION, zone_storage_key)
-        data = await store.async_load() or {}
+        store, data = get_zone_store_and_data(hass, zone_entry_id)
+        if not store:
+            zone_storage_key = get_storage_key(zone_entry_id)
+            store = Store(hass, STORAGE_VERSION, zone_storage_key)
+            data = await store.async_load() or {}
 
         if application_date:
             try:
@@ -162,9 +183,11 @@ async def _register_services(hass: HomeAssistant):
             _LOGGER.error("No zone entry ID provided")
             return
 
-        zone_storage_key = get_storage_key(zone_entry_id)
-        store = Store(hass, STORAGE_VERSION, zone_storage_key)
-        data = await store.async_load() or {}
+        store, data = get_zone_store_and_data(hass, zone_entry_id)
+        if not store:
+            zone_storage_key = get_storage_key(zone_entry_id)
+            store = Store(hass, STORAGE_VERSION, zone_storage_key)
+            data = await store.async_load() or {}
 
         if application_date:
             try:
@@ -229,7 +252,6 @@ async def _register_services(hass: HomeAssistant):
                 default_amount_lb = default_amount_lb_per_1000
                 default_amount_oz = round(default_amount_lb * 16, 2)
 
-        # Handle rate override with custom rate unit support
         if rate_override == "Default":
             rate_multiplier = 1.0
             rate_description = "Default"
@@ -257,7 +279,6 @@ async def _register_services(hass: HomeAssistant):
                             rate_multiplier = 1.0
                         rate_description = f"Custom ({rate_value} oz/1000sqft)"
                     elif "lb per" in custom_rate_unit:
-                        # User specified actual lb per 1000 sqft
                         if default_amount_lb > 0:
                             rate_multiplier = rate_value / default_amount_lb
                         else:
@@ -271,7 +292,6 @@ async def _register_services(hass: HomeAssistant):
                             rate_multiplier = 1.0
                         rate_description = f"Custom ({rate_value} ml/1000sqft)"
                     else:
-                        # Default: treat as multiplier
                         rate_multiplier = rate_value
                         rate_description = f"Custom ({rate_multiplier}x)"
             except ValueError:
@@ -312,7 +332,6 @@ async def _register_services(hass: HomeAssistant):
 
         data["applications"][chemical] = application_data
 
-        # Also append to application_history list for full activity tracking
         if "application_history" not in data:
             data["application_history"] = []
         data["application_history"].append({
@@ -352,6 +371,8 @@ async def _register_services(hass: HomeAssistant):
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+    if unload_ok:
+        hass.data.get(DOMAIN, {}).pop(entry.entry_id, None)
     return unload_ok
 
 

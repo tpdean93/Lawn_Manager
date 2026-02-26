@@ -2,6 +2,7 @@ import logging
 from datetime import datetime
 from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.helpers.storage import Store
+from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.util import dt as dt_util
 import uuid
 
@@ -162,7 +163,7 @@ async def async_register_services(hass: HomeAssistant) -> None:
         """Calculate application rates based on equipment and zone."""
         chemical = call.data.get("chemical")
         equipment_name = call.data.get("equipment_name")
-        zone = call.data.get("zone")
+        zone_input = call.data.get("zone")
 
         entries = hass.config_entries.async_entries(DOMAIN)
         if not entries:
@@ -170,15 +171,17 @@ async def async_register_services(hass: HomeAssistant) -> None:
             return {"error": "No Lawn Manager config entries found"}
 
         zone_config = None
+        zone_entry = None
         for entry in entries:
-            if entry.data.get("yard_zone") == zone:
+            if entry.entry_id == zone_input or entry.data.get("yard_zone") == zone_input:
                 zone_config = entry.data
+                zone_entry = entry
                 break
 
         if not zone_config:
-            _LOGGER.error("Zone '%s' not found in config entries", zone)
+            _LOGGER.error("Zone '%s' not found in config entries", zone_input)
             available_zones = [e.data.get("yard_zone", "?") for e in entries]
-            return {"error": f"Zone '{zone}' not found. Available: {available_zones}"}
+            return {"error": f"Zone '{zone_input}' not found. Available: {available_zones}"}
 
         lawn_size_sqft = zone_config.get("lawn_size_sqft", 1000)
 
@@ -214,6 +217,7 @@ async def async_register_services(hass: HomeAssistant) -> None:
         equipment_type = equipment["type"]
         chemical_notes = chemical_data.get("notes", "")
 
+        zone = zone_config.get("yard_zone", "Unknown")
         calculation = {
             "chemical": chemical,
             "equipment": equipment["friendly_name"],
@@ -338,6 +342,19 @@ async def async_register_services(hass: HomeAssistant) -> None:
 
         _LOGGER.info("Application rate calculated: %s", calculation)
         hass.bus.async_fire(f"{DOMAIN}_rate_calculated", calculation)
+
+        if zone_entry:
+            from . import get_zone_store_and_data
+            from .const import get_storage_key as _get_storage_key
+            store, data = get_zone_store_and_data(hass, zone_entry.entry_id)
+            if not store:
+                zone_storage_key = _get_storage_key(zone_entry.entry_id)
+                store = Store(hass, STORAGE_VERSION, zone_storage_key)
+                data = await store.async_load() or {}
+            data["last_rate_calculation"] = calculation
+            await store.async_save(data)
+            async_dispatcher_send(hass, f"lawn_manager_update_{zone_entry.entry_id}")
+
         return calculation
 
     async def handle_get_equipment_options(call: ServiceCall):

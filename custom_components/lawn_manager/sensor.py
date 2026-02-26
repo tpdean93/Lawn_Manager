@@ -8,7 +8,7 @@ from homeassistant.helpers.entity import EntityCategory
 from homeassistant.util import dt as dt_util
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 
-from .const import DOMAIN, DEFAULT_MOW_INTERVAL, get_storage_key
+from .const import DOMAIN, DEFAULT_MOW_INTERVAL, STORAGE_VERSION, get_storage_key
 from .weather_helper import WeatherHelper
 
 _LOGGER = logging.getLogger(__name__)
@@ -20,7 +20,13 @@ except ImportError:
     SEASONAL_AVAILABLE = False
     _LOGGER.warning("Seasonal helper not available - seasonal features disabled")
 
-STORAGE_VERSION = 1
+
+def _get_zone_data(hass, entry_id):
+    """Read zone data from shared hass.data (in-memory, always fresh)."""
+    zone_info = hass.data.get(DOMAIN, {}).get(entry_id)
+    if zone_info:
+        return zone_info.get("data", {})
+    return None
 
 
 class LawnManagerSensorManager:
@@ -34,9 +40,11 @@ class LawnManagerSensorManager:
         self._unsub_dispatcher = None
 
     async def async_setup(self):
-        zone_storage_key = get_storage_key(self.entry.entry_id)
-        store = Store(self.hass, STORAGE_VERSION, zone_storage_key)
-        data = await store.async_load() or {}
+        data = _get_zone_data(self.hass, self.entry.entry_id)
+        if data is None:
+            zone_storage_key = get_storage_key(self.entry.entry_id)
+            store = Store(self.hass, STORAGE_VERSION, zone_storage_key)
+            data = await store.async_load() or {}
         config = self.entry.data
         yard_zone = config.get("yard_zone", "Lawn")
         location = config.get("location", "Unknown")
@@ -46,8 +54,8 @@ class LawnManagerSensorManager:
         rain_sensor = config.get("rain_sensor")
         grass_type = config.get("grass_type", "Bermuda")
 
-        self.mow_sensor = LawnMowSensor(self.entry.entry_id, yard_zone, location, mow_interval, store)
-        self.mow_due_sensor = LawnMowDueSensor(self.entry.entry_id, yard_zone, location, mow_interval, store, weather_entity, grass_type)
+        self.mow_sensor = LawnMowSensor(self.entry.entry_id, yard_zone, location, mow_interval)
+        self.mow_due_sensor = LawnMowDueSensor(self.entry.entry_id, yard_zone, location, mow_interval, weather_entity=weather_entity, grass_type=grass_type)
         entities = [self.mow_sensor, self.mow_due_sensor]
 
         if weather_entity:
@@ -89,9 +97,11 @@ class LawnManagerSensorManager:
         self._unsub_equipment_dispatcher = async_dispatcher_connect(self.hass, "lawn_manager_equipment_update", self._handle_equipment_update_signal)
 
     async def _handle_update_signal(self):
-        zone_storage_key = get_storage_key(self.entry.entry_id)
-        store = Store(self.hass, STORAGE_VERSION, zone_storage_key)
-        data = await store.async_load() or {}
+        data = _get_zone_data(self.hass, self.entry.entry_id)
+        if data is None:
+            zone_storage_key = get_storage_key(self.entry.entry_id)
+            store = Store(self.hass, STORAGE_VERSION, zone_storage_key)
+            data = await store.async_load() or {}
 
         current_chems = set(data.get("applications", {}).keys())
         new_chems = current_chems - self.known_chemicals
@@ -135,13 +145,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
 
 
 class LawnMowSensor(SensorEntity):
-    def __init__(self, entry_id, yard_zone, location, mow_interval, store):
+    def __init__(self, entry_id, yard_zone, location, mow_interval):
         self._entry_id = entry_id
         self._yard_zone = yard_zone
         self._location = location
         self._mow_interval = mow_interval
         self._last_mow = None
-        self._store = store
         self._unsub_dispatcher = None
         self._latest_activity = None
 
@@ -160,7 +169,11 @@ class LawnMowSensor(SensorEntity):
         self.async_write_ha_state()
 
     async def async_update(self):
-        data = await self._store.async_load() or {}
+        data = _get_zone_data(self.hass, self._entry_id)
+        if data is None:
+            zone_storage_key = get_storage_key(self._entry_id)
+            store = Store(self.hass, STORAGE_VERSION, zone_storage_key)
+            data = await store.async_load() or {}
         try:
             if data.get("last_mow"):
                 self._last_mow = dt_util.as_local(
@@ -229,13 +242,12 @@ class LawnMowSensor(SensorEntity):
 
 
 class LawnMowDueSensor(SensorEntity):
-    def __init__(self, entry_id, yard_zone, location, mow_interval, store, weather_entity=None, grass_type="Bermuda"):
+    def __init__(self, entry_id, yard_zone, location, mow_interval, weather_entity=None, grass_type="Bermuda"):
         self._entry_id = entry_id
         self._yard_zone = yard_zone
         self._location = location
         self._mow_interval = mow_interval
         self._last_mow = None
-        self._store = store
         self._weather_entity = weather_entity
         self._weather_helper = None
         self._grass_type = grass_type
@@ -262,7 +274,11 @@ class LawnMowDueSensor(SensorEntity):
         self.async_write_ha_state()
 
     async def async_update(self):
-        data = await self._store.async_load() or {}
+        data = _get_zone_data(self.hass, self._entry_id)
+        if data is None:
+            zone_storage_key = get_storage_key(self._entry_id)
+            store = Store(self.hass, STORAGE_VERSION, zone_storage_key)
+            data = await store.async_load() or {}
         try:
             if data.get("last_mow"):
                 self._last_mow = dt_util.as_local(
@@ -391,12 +407,11 @@ class ChemicalApplicationSensor(SensorEntity):
         self.async_write_ha_state()
 
     async def async_update(self):
-        from homeassistant.helpers.storage import Store
-        from .const import STORAGE_VERSION
-
-        zone_storage_key = get_storage_key(self._entry_id)
-        store = Store(self.hass, STORAGE_VERSION, zone_storage_key)
-        data = await store.async_load() or {}
+        data = _get_zone_data(self.hass, self._entry_id)
+        if data is None:
+            zone_storage_key = get_storage_key(self._entry_id)
+            store = Store(self.hass, STORAGE_VERSION, zone_storage_key)
+            data = await store.async_load() or {}
 
         chem_data = data.get("applications", {}).get(self._chemical_name, {})
         if chem_data:
@@ -523,12 +538,11 @@ class LawnSeasonalSensor(SensorEntity):
         self.async_write_ha_state()
 
     async def async_update(self):
-        from homeassistant.helpers.storage import Store
-        from .const import STORAGE_VERSION
-
-        zone_storage_key = get_storage_key(self._entry_id)
-        store = Store(self.hass, STORAGE_VERSION, zone_storage_key)
-        data = await store.async_load() or {}
+        data = _get_zone_data(self.hass, self._entry_id)
+        if data is None:
+            zone_storage_key = get_storage_key(self._entry_id)
+            store = Store(self.hass, STORAGE_VERSION, zone_storage_key)
+            data = await store.async_load() or {}
         self._application_history = data.get("applications", {})
 
     @property
@@ -880,9 +894,11 @@ class RateCalculationSensor(SensorEntity):
         self.async_write_ha_state()
 
     async def async_update(self):
-        zone_storage_key = get_storage_key(self._entry_id)
-        store = Store(self.hass, STORAGE_VERSION, zone_storage_key)
-        data = await store.async_load() or {}
+        data = _get_zone_data(self.hass, self._entry_id)
+        if data is None:
+            zone_storage_key = get_storage_key(self._entry_id)
+            store = Store(self.hass, STORAGE_VERSION, zone_storage_key)
+            data = await store.async_load() or {}
         self._calculation_result = data.get("last_rate_calculation")
 
     @property
@@ -950,9 +966,11 @@ class ActivityHistorySensor(SensorEntity):
         self.async_write_ha_state()
 
     async def async_update(self):
-        zone_storage_key = get_storage_key(self._entry_id)
-        store = Store(self.hass, STORAGE_VERSION, zone_storage_key)
-        data = await store.async_load() or {}
+        data = _get_zone_data(self.hass, self._entry_id)
+        if data is None:
+            zone_storage_key = get_storage_key(self._entry_id)
+            store = Store(self.hass, STORAGE_VERSION, zone_storage_key)
+            data = await store.async_load() or {}
 
         activities = []
 
@@ -967,27 +985,28 @@ class ActivityHistorySensor(SensorEntity):
                 activity["detail"] = f"HOC: {mow['height_of_cut_inches']} in"
             activities.append(activity)
 
-        applications = data.get("applications", {})
-        if isinstance(applications, dict):
-            for chem_name, chem_data in applications.items():
-                if isinstance(chem_data, dict) and chem_data.get("last_applied"):
-                    activities.append({
-                        "type": "chemical",
-                        "activity": chem_name,
-                        "date": chem_data.get("last_applied", ""),
-                        "timestamp": chem_data.get("last_applied", ""),
-                        "detail": f"{chem_data.get('rate_description', 'Default')} via {chem_data.get('method', '?')}",
-                    })
-
-        # Also check application_history list if present
-        for app in data.get("application_history", []):
-            activities.append({
-                "type": "chemical",
-                "activity": app.get("chemical", "Unknown"),
-                "date": app.get("date", ""),
-                "timestamp": app.get("timestamp", app.get("date", "")),
-                "detail": app.get("detail", ""),
-            })
+        application_history = data.get("application_history", [])
+        if application_history:
+            for app in application_history:
+                activities.append({
+                    "type": "chemical",
+                    "activity": app.get("chemical", "Unknown"),
+                    "date": app.get("date", ""),
+                    "timestamp": app.get("timestamp", app.get("date", "")),
+                    "detail": app.get("detail", ""),
+                })
+        else:
+            applications = data.get("applications", {})
+            if isinstance(applications, dict):
+                for chem_name, chem_data in applications.items():
+                    if isinstance(chem_data, dict) and chem_data.get("last_applied"):
+                        activities.append({
+                            "type": "chemical",
+                            "activity": chem_name,
+                            "date": chem_data.get("last_applied", ""),
+                            "timestamp": chem_data.get("last_applied", ""),
+                            "detail": f"{chem_data.get('rate_description', 'Default')} via {chem_data.get('method', '?')}",
+                        })
 
         activities.sort(key=lambda x: x.get("timestamp", x.get("date", "")), reverse=True)
 
