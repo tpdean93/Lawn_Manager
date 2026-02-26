@@ -3,14 +3,14 @@
       "step": {
         "user": {
           "title": "Lawn Manager Setup",
-          "description": "Configure your lawn care settings",
+          "description": "Configure your lawn care settings. {step}",
           "data": {
-            "yard_zone": "Zone Name",
-            "location": "Location",
-            "mow_interval": "Mowing Interval (days)",
+            "yard_zone": "Zone Name (e.g., Front Yard, Back Yard)",
+            "location": "Location (city/state for seasonal intelligence)",
+            "mow_interval": "Mowing Schedule",
             "lawn_size_sqft": "Lawn Size (sq ft)",
             "grass_type": "Grass Type",
-            "weather_entity": "Weather Entity"
+            "weather_entity": "Weather Entity (includes AWN weather stations)"
           }
         },
         "custom_grass": {
@@ -23,19 +23,20 @@
         },
         "equipment": {
           "title": "Equipment Setup",
-          "description": "Add your lawn care equipment (optional). You can add more equipment later.",
-          "data": {
-            "add_equipment": "Add Equipment?"
-          }
-        },
-        "add_equipment": {
-          "title": "Add Equipment",
-          "description": "Enter equipment details",
+          "description": "Add your lawn care equipment (optional). You can add more equipment later.\n\n{equipment_list}",
           "data": {
             "equipment_type": "Equipment Type",
             "brand": "Brand",
             "capacity": "Capacity",
-            "capacity_unit": "Capacity Unit"
+            "capacity_unit": "Capacity Unit",
+            "action": "What would you like to do?"
+          }
+        },
+        "final": {
+          "title": "Confirm Setup",
+          "description": "{summary}",
+          "data": {
+            "confirm": "Confirm and create zone"
           }
         }
       },
@@ -46,4 +47,4 @@
         "already_configured": "Zone already configured"
       }
     }
-  } 
+  }
