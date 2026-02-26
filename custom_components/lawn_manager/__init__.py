@@ -251,10 +251,7 @@ async def _register_services(hass: HomeAssistant):
                     rate_value = float(custom_rate)
 
                     if "oz per" in custom_rate_unit:
-                        # User specified actual oz per 1000 sqft
-                        if is_liquid_application and default_amount_oz > 0:
-                            rate_multiplier = rate_value / default_amount_oz
-                        elif default_amount_oz > 0:
+                        if default_amount_oz > 0:
                             rate_multiplier = rate_value / default_amount_oz
                         else:
                             rate_multiplier = 1.0

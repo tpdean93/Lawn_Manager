@@ -158,10 +158,10 @@ class SeasonalHelper:
 
         soil_temp = self._get_soil_temperature_estimate()
         if soil_temp:
-            if soil_temp > 50 and soil_temp < 60:
-                warnings.append(f"Estimated soil temp ~{int(soil_temp)}°F - approaching pre-emergent window")
-            elif soil_temp >= 55 and soil_temp <= 70:
+            if soil_temp >= 55 and soil_temp <= 70:
                 warnings.append(f"Estimated soil temp ~{int(soil_temp)}°F - CRITICAL pre-emergent window")
+            elif soil_temp > 50 and soil_temp < 55:
+                warnings.append(f"Estimated soil temp ~{int(soil_temp)}°F - approaching pre-emergent window")
 
         return warnings
 
