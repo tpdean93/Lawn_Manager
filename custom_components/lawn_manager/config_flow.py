@@ -7,10 +7,11 @@ import uuid
 from .const import DOMAIN, GRASS_TYPE_LIST, EQUIPMENT_TYPES, EQUIPMENT_BRANDS, CAPACITY_UNITS, STORAGE_VERSION, EQUIPMENT_STORAGE_KEY
 
 def _scan_weather_entities(hass):
-    """Scan for weather entities and weather station devices.
+    """Scan for weather.* entities and weather station devices.
     
-    Detects weather stations by finding devices that have BOTH temperature
-    and humidity sensors — works regardless of station name or integration.
+    Finds weather station devices by looking for devices with 'weather' in
+    their name, manufacturer, or model. Then picks the outdoor temperature
+    sensor from each device.
     """
     from homeassistant.helpers import entity_registry as er, device_registry as dr
 
@@ -25,93 +26,81 @@ def _scan_weather_entities(hass):
             weather_entities.append((entity_id, friendly_name))
             seen_ids.add(entity_id)
 
-    # 2. Find weather station devices using the entity/device registries
-    #    A weather station = any device with both temperature + humidity sensors
+    # 2. Find weather station DEVICES and pick their outdoor temp sensor
     try:
         ent_reg = er.async_get(hass)
         dev_reg = dr.async_get(hass)
     except Exception:
         return weather_entities
 
-    indoor_keywords = ["indoor", "inside", "interior", "in_temp", "in_humid"]
-    # Device classes that indicate an air quality monitor, not a weather station
-    aqi_classes = {"pm25", "pm1", "pm10", "aqi", "volatile_organic_compounds",
-                   "volatile_organic_compounds_parts", "carbon_dioxide", "carbon_monoxide",
-                   "nitrogen_dioxide", "nitrogen_monoxide", "ozone", "sulphur_dioxide"}
+    # Find devices that are weather stations
+    weather_device_ids = set()
+    for device in dev_reg.devices.values():
+        searchable = " ".join([
+            (device.name or ""),
+            (device.name_by_user or ""),
+            (device.manufacturer or ""),
+            (device.model or ""),
+        ]).lower()
 
-    # Group sensor entities by device_id
-    device_sensors = {}
-    for entry in ent_reg.entities.values():
-        if entry.domain != "sensor" or not entry.device_id:
-            continue
-        if entry.disabled:
-            continue
+        if "weather" in searchable:
+            weather_device_ids.add(device.id)
 
-        eid_lower = entry.entity_id.lower()
-        name_lower = (entry.original_name or entry.name or "").lower()
+    if not weather_device_ids:
+        return weather_entities
 
-        if any(kw in eid_lower or kw in name_lower for kw in indoor_keywords):
-            continue
+    indoor_keywords = ["indoor", "inside", "interior"]
+    skip_keywords = ["feels_like", "dew_point", "dewpoint", "heat_index", "wind_chill",
+                     "pm2", "pm1", "pm10", "aqi", "co2", "voc", "battery",
+                     "lightning", "solar", "uv"]
 
-        dev_class = entry.original_device_class or entry.device_class or ""
-
-        if entry.device_id not in device_sensors:
-            device_sensors[entry.device_id] = {
-                "temp": [], "humidity": [], "wind": [], "pressure": [],
-                "has_aqi": False,
-            }
-
-        if dev_class == "temperature":
-            device_sensors[entry.device_id]["temp"].append(entry)
-        elif dev_class == "humidity":
-            device_sensors[entry.device_id]["humidity"].append(entry)
-        elif dev_class == "wind_speed":
-            device_sensors[entry.device_id]["wind"].append(entry)
-        elif dev_class in ("pressure", "atmospheric_pressure"):
-            device_sensors[entry.device_id]["pressure"].append(entry)
-
-        # Flag devices that have air quality sensors
-        if dev_class in aqi_classes or "pm2" in eid_lower or "aqi" in eid_lower:
-            device_sensors[entry.device_id]["has_aqi"] = True
-
-    # A REAL weather station has temp + humidity + (wind OR pressure).
-    # Air quality monitors (PM2.5) often have temp+humidity but no wind/pressure — skip those.
-    for device_id, sensors in device_sensors.items():
-        if not sensors["temp"] or not sensors["humidity"]:
-            continue
-
-        has_wind_or_pressure = bool(sensors["wind"] or sensors["pressure"])
-
-        # If the device has AQI sensors and NO wind/pressure, it's an air quality monitor
-        if sensors["has_aqi"] and not has_wind_or_pressure:
-            continue
-
-        # Even without AQI flag, require wind or pressure to confirm it's a real weather station
-        # (avoids picking up random temp+humidity combos like thermostats)
-        if not has_wind_or_pressure:
-            continue
-
+    # For each weather station device, find the best outdoor temperature sensor
+    for device_id in weather_device_ids:
         device = dev_reg.async_get(device_id)
         if not device:
             continue
 
         device_name = device.name_by_user or device.name or "Weather Station"
 
-        # Pick the best outdoor temperature sensor
-        temp_entity = sensors["temp"][0]
-        for t in sensors["temp"]:
-            t_lower = t.entity_id.lower() + (t.original_name or "").lower()
-            if any(x in t_lower for x in ["outdoor", "outside", "tempf"]):
-                temp_entity = t
-                break
-            if "feels" in t_lower or "dew" in t_lower or "heat_index" in t_lower:
+        # Find all temperature sensors on this device
+        temp_sensors = []
+        for entry in ent_reg.entities.values():
+            if entry.device_id != device_id or entry.domain != "sensor":
                 continue
-            temp_entity = t
+            if entry.disabled:
+                continue
 
-        if temp_entity.entity_id in seen_ids:
+            dev_class = entry.original_device_class or entry.device_class or ""
+            if dev_class != "temperature":
+                continue
+
+            eid_lower = entry.entity_id.lower()
+            name_lower = (entry.original_name or entry.name or "").lower()
+
+            # Skip indoor and derived sensors
+            if any(kw in eid_lower or kw in name_lower for kw in indoor_keywords):
+                continue
+            if any(kw in eid_lower or kw in name_lower for kw in skip_keywords):
+                continue
+
+            temp_sensors.append(entry)
+
+        if not temp_sensors:
             continue
 
-        state = hass.states.get(temp_entity.entity_id)
+        # Pick the best one — prefer "outdoor", "outside", "temp" named sensors
+        best = temp_sensors[0]
+        for t in temp_sensors:
+            t_search = t.entity_id.lower() + " " + (t.original_name or "").lower()
+            if any(x in t_search for x in ["outdoor", "outside", "tempf"]):
+                best = t
+                break
+
+        if best.entity_id in seen_ids:
+            continue
+
+        # Verify valid numeric state
+        state = hass.states.get(best.entity_id)
         if not state:
             continue
         try:
@@ -119,9 +108,8 @@ def _scan_weather_entities(hass):
         except (ValueError, TypeError):
             continue
 
-        label = f"Station: {device_name}"
-        weather_entities.append((temp_entity.entity_id, label))
-        seen_ids.add(temp_entity.entity_id)
+        weather_entities.append((best.entity_id, f"Station: {device_name}"))
+        seen_ids.add(best.entity_id)
 
     return weather_entities
 
