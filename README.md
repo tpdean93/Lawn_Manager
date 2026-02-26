@@ -1,3 +1,4 @@
+![Lawn Manager Banner](./banner.png)
 # Lawn Manager - Home Assistant Integration
 
 A comprehensive Home Assistant integration for intelligent lawn care management with **professional-grade chemical calculations**, **multi-zone tracking**, **equipment management**, **seasonal intelligence**, and **smart notifications**.
