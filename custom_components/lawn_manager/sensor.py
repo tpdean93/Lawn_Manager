@@ -785,7 +785,8 @@ class EquipmentInventorySensor(SensorEntity):
     def state(self):
         if not self._equipment_list:
             return "No equipment added"
-        return f"{len(self._equipment_list)} equipment items"
+        names = [item["name"] for item in self._equipment_list]
+        return ", ".join(names)
 
     @property
     def icon(self):
@@ -794,12 +795,21 @@ class EquipmentInventorySensor(SensorEntity):
     @property
     def extra_state_attributes(self):
         if not self._equipment_list:
-            return {"equipment_count": 0}
-        return {
-            "equipment_list": self._equipment_list,
+            return {"equipment_count": 0, "status": "No equipment. Add via service or config flow."}
+
+        attrs = {
             "equipment_count": len(self._equipment_list),
-            "equipment_summary": [item["name"] for item in self._equipment_list]
         }
+        for i, item in enumerate(self._equipment_list):
+            prefix = f"equipment_{i+1}"
+            attrs[f"{prefix}_name"] = item["name"]
+            attrs[f"{prefix}_type"] = item["type"]
+            attrs[f"{prefix}_brand"] = item["brand"]
+            attrs[f"{prefix}_capacity"] = item["capacity"]
+            attrs[f"{prefix}_id"] = item["id"]
+
+        attrs["equipment_list"] = self._equipment_list
+        return attrs
 
     @property
     def unique_id(self):
@@ -883,12 +893,15 @@ class ActivityHistorySensor(SensorEntity):
         self._yard_zone = yard_zone
         self._activities = []
         self._unsub_dispatcher = None
+        self._total_mowing = 0
+        self._total_chemical = 0
 
     async def async_added_to_hass(self):
         signal_name = f"lawn_manager_update_{self._entry_id}"
         self._unsub_dispatcher = async_dispatcher_connect(
             self.hass, signal_name, self._handle_update_signal
         )
+        await self.async_update()
 
     async def async_will_remove_from_hass(self):
         if self._unsub_dispatcher:
@@ -910,21 +923,39 @@ class ActivityHistorySensor(SensorEntity):
                 "type": "mowing",
                 "activity": mow.get("cut_type", "Mow"),
                 "date": mow.get("date", ""),
+                "timestamp": mow.get("timestamp", mow.get("date", "")),
             }
             if "height_of_cut_inches" in mow:
                 activity["detail"] = f"HOC: {mow['height_of_cut_inches']} in"
             activities.append(activity)
 
-        for chem_name, chem_data in data.get("applications", {}).items():
+        applications = data.get("applications", {})
+        if isinstance(applications, dict):
+            for chem_name, chem_data in applications.items():
+                if isinstance(chem_data, dict) and chem_data.get("last_applied"):
+                    activities.append({
+                        "type": "chemical",
+                        "activity": chem_name,
+                        "date": chem_data.get("last_applied", ""),
+                        "timestamp": chem_data.get("last_applied", ""),
+                        "detail": f"{chem_data.get('rate_description', 'Default')} via {chem_data.get('method', '?')}",
+                    })
+
+        # Also check application_history list if present
+        for app in data.get("application_history", []):
             activities.append({
                 "type": "chemical",
-                "activity": chem_name,
-                "date": chem_data.get("last_applied", ""),
-                "detail": f"{chem_data.get('rate_description', 'Default')} via {chem_data.get('method', '?')}",
+                "activity": app.get("chemical", "Unknown"),
+                "date": app.get("date", ""),
+                "timestamp": app.get("timestamp", app.get("date", "")),
+                "detail": app.get("detail", ""),
             })
 
-        activities.sort(key=lambda x: x.get("date", ""), reverse=True)
-        self._activities = activities[:25]
+        activities.sort(key=lambda x: x.get("timestamp", x.get("date", "")), reverse=True)
+
+        self._total_mowing = len([a for a in activities if a["type"] == "mowing"])
+        self._total_chemical = len([a for a in activities if a["type"] == "chemical"])
+        self._activities = activities[:30]
 
     @property
     def name(self):
@@ -932,7 +963,10 @@ class ActivityHistorySensor(SensorEntity):
 
     @property
     def state(self):
-        return f"{len(self._activities)} activities"
+        total = self._total_mowing + self._total_chemical
+        if total == 0:
+            return "No activities"
+        return f"{total} activities"
 
     @property
     def icon(self):
@@ -941,18 +975,17 @@ class ActivityHistorySensor(SensorEntity):
     @property
     def extra_state_attributes(self):
         if not self._activities:
-            return {"status": "No activities recorded yet"}
+            return {"status": "No activities recorded yet. Log a mowing or chemical application to start tracking."}
 
         attrs = {
-            "total_activities": len(self._activities),
+            "total_activities": self._total_mowing + self._total_chemical,
+            "total_mowing_activities": self._total_mowing,
+            "total_chemical_applications": self._total_chemical,
             "recent_activities": self._activities[:10],
         }
 
         mowing = [a for a in self._activities if a["type"] == "mowing"]
         chemicals = [a for a in self._activities if a["type"] == "chemical"]
-
-        attrs["total_mowing_activities"] = len(mowing)
-        attrs["total_chemical_applications"] = len(chemicals)
 
         if mowing:
             attrs["last_mowing"] = mowing[0]
