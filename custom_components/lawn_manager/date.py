@@ -17,12 +17,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
 
 
 class ApplicationDateEntity(DateEntity):
-    """Date entity for application date - shared by both mowing and chemical logging."""
+    """Date entity for application date - set to today or a past date to back-log activities."""
 
     def __init__(self, hass, entry):
         self._hass = hass
         self._entry = entry
-        self._attr_name = "Application Date"
+        self._attr_name = "Activity Date"
         self._attr_unique_id = f"{entry.entry_id}_application_date"
         self._attr_native_value = date.today()
         self._attr_icon = "mdi:calendar"

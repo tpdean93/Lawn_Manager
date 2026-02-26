@@ -77,6 +77,10 @@ class LawnManagerSensorManager:
         self.rate_sensor = RateCalculationSensor(self.entry.entry_id, yard_zone)
         entities.append(self.rate_sensor)
 
+        # Unified activity history sensor
+        self.history_sensor = ActivityHistorySensor(self.entry.entry_id, yard_zone)
+        entities.append(self.history_sensor)
+
         self.async_add_entities(entities, update_before_add=False)
 
         signal_name = f"lawn_manager_update_{self.entry.entry_id}"
@@ -868,4 +872,103 @@ class RateCalculationSensor(SensorEntity):
             "name": self._yard_zone,
             "manufacturer": "Lawn Manager",
             "model": "Chemical Application",
+        }
+
+
+class ActivityHistorySensor(SensorEntity):
+    """Unified activity history sensor showing all activities for a zone."""
+
+    def __init__(self, entry_id, yard_zone):
+        self._entry_id = entry_id
+        self._yard_zone = yard_zone
+        self._activities = []
+        self._unsub_dispatcher = None
+
+    async def async_added_to_hass(self):
+        signal_name = f"lawn_manager_update_{self._entry_id}"
+        self._unsub_dispatcher = async_dispatcher_connect(
+            self.hass, signal_name, self._handle_update_signal
+        )
+
+    async def async_will_remove_from_hass(self):
+        if self._unsub_dispatcher:
+            self._unsub_dispatcher()
+
+    async def _handle_update_signal(self):
+        await self.async_update()
+        self.async_write_ha_state()
+
+    async def async_update(self):
+        zone_storage_key = get_storage_key(self._entry_id)
+        store = Store(self.hass, STORAGE_VERSION, zone_storage_key)
+        data = await store.async_load() or {}
+
+        activities = []
+
+        for mow in data.get("mowing_history", []):
+            activity = {
+                "type": "mowing",
+                "activity": mow.get("cut_type", "Mow"),
+                "date": mow.get("date", ""),
+            }
+            if "height_of_cut_inches" in mow:
+                activity["detail"] = f"HOC: {mow['height_of_cut_inches']} in"
+            activities.append(activity)
+
+        for chem_name, chem_data in data.get("applications", {}).items():
+            activities.append({
+                "type": "chemical",
+                "activity": chem_name,
+                "date": chem_data.get("last_applied", ""),
+                "detail": f"{chem_data.get('rate_description', 'Default')} via {chem_data.get('method', '?')}",
+            })
+
+        activities.sort(key=lambda x: x.get("date", ""), reverse=True)
+        self._activities = activities[:25]
+
+    @property
+    def name(self):
+        return f"{self._yard_zone} Activity History"
+
+    @property
+    def state(self):
+        return f"{len(self._activities)} activities"
+
+    @property
+    def icon(self):
+        return "mdi:history"
+
+    @property
+    def extra_state_attributes(self):
+        if not self._activities:
+            return {"status": "No activities recorded yet"}
+
+        attrs = {
+            "total_activities": len(self._activities),
+            "recent_activities": self._activities[:10],
+        }
+
+        mowing = [a for a in self._activities if a["type"] == "mowing"]
+        chemicals = [a for a in self._activities if a["type"] == "chemical"]
+
+        attrs["total_mowing_activities"] = len(mowing)
+        attrs["total_chemical_applications"] = len(chemicals)
+
+        if mowing:
+            attrs["last_mowing"] = mowing[0]
+        if chemicals:
+            attrs["last_chemical"] = chemicals[0]
+
+        return attrs
+
+    @property
+    def unique_id(self):
+        return f"lawn_manager_{self._entry_id}_{self._yard_zone.lower().replace(' ', '_')}_history"
+
+    @property
+    def device_info(self):
+        return {
+            "identifiers": {(DOMAIN, self._entry_id)},
+            "name": self._yard_zone,
+            "manufacturer": "Lawn Manager",
         }
