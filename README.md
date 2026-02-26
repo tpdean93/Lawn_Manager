@@ -1,9 +1,8 @@
-![Lawn Manager Banner](./banner.png)
 # Lawn Manager - Home Assistant Integration
 
-A comprehensive Home Assistant integration for intelligent lawn care management with **professional-grade chemical calculations**, **multi-zone tracking**, **equipment management**, and **smart notifications**. Now with **perfect zone isolation** and **enhanced chemical calculations** for liquid and granular applications!
+A comprehensive Home Assistant integration for intelligent lawn care management with **professional-grade chemical calculations**, **multi-zone tracking**, **equipment management**, **seasonal intelligence**, and **smart notifications**.
 
-## 🚀 Quick Installation
+## Quick Installation
 
 ### Easy Installation via HACS
 
@@ -25,157 +24,305 @@ A comprehensive Home Assistant integration for intelligent lawn care management 
 3. Restart Home Assistant
 4. Add the integration via Settings → Devices & Services
 
-## 🆕 Latest Updates (v1.0.1+)
+---
 
-### 🎯 Perfect Multi-Zone Support
-- **Zone Isolation**: Front Yard and Back Yard now have completely separate data storage
-- **Zone-Specific Sensors**: Chemical sensors show zone names (e.g., "Front Yard T-Nex (Applied Today)")
-- **Independent Tracking**: Chemical applications logged in one zone don't appear in other zones
-- **Shared Equipment**: Equipment inventory shared across all zones for convenience
+## What's New in v1.1.0
 
-### 🧪 Enhanced Chemical Calculations
-- **Liquid vs Granular Detection**: Automatically detects application type based on equipment and chemical data
-- **Accurate Chemical Rates**: Fixed T-Nex, Disease Preventer, Insecticide, and Soil Conditioner calculations
-- **Method-Specific Calculations**: Liquid rates for sprayers, granular rates for spreaders
-- **Rich Sensor Data**: Sensors now show total amounts needed, application type, and zone information
+### Reconfigure Without Reinstalling
+- **Options Flow**: Click "Configure" on any zone to change settings without uninstalling
+- **Change Mow Interval**: Update your mowing schedule any time (no reinstall needed!)
+- **Change Weather Source**: Switch between weather entities or add AWN weather station
+- **Change Grass Type**: Update grass type as needed for accurate seasonal recommendations
 
-### 🔧 Equipment & UI Improvements
-- **Smart Equipment Defaults**: Equipment Selection now defaults to actual equipment instead of "None"
-- **Multi-Zone Configuration**: Clear messaging that equipment is shared across all zones
-- **Integration Icon**: Custom logo now displays properly in Home Assistant integrations list
-- **Enhanced Logging**: Better debugging and calculation visibility
+### AWN Weather Station Support
+- **Ambient Weather Network**: Select your local AWN weather station as the weather source
+- **More Accurate Data**: Use hyperlocal weather data from your own weather station
+- **Auto-Detection**: AWN entities are automatically discovered and labeled in the setup flow
 
-## 🌟 Major Features
+### Split Controls
+- **Mowing Controls**: Activity type, height of cut, and log button grouped together
+- **Chemical Controls**: Chemical selection, rate, equipment, and log button grouped separately
+- **Calculate Application Rate Button**: Get mixing instructions right from the controls — no dev tools needed
 
-### 🧪 Professional Chemical Calculations
+### Custom Chemical Amounts
+- **Actual Units**: Specify rates in oz, lb, or ml per 1,000 sq ft (not just percentages)
+- **Custom Rate Unit Selector**: Choose between multiplier, oz/1000sqft, lb/1000sqft, or ml/1000sqft
+- **Precise Control**: Enter the exact amount from your product label
+
+### Custom Products Inventory
+- **My Products**: Add your own chemicals/products with custom rates and intervals
+- **Shared Across Zones**: Products are available for all lawn zones
+- **Full Details**: Store product type, application rates (liquid & granular), interval, and notes
+- **Services**: `add_custom_product`, `list_custom_products`, `delete_custom_product`
+
+### Equipment Maintenance Log
+- **Track Maintenance**: Log blade sharpening, oil changes, air filters, spark plugs, and more
+- **Cost Tracking**: Optionally record maintenance costs
+- **Full History**: View all maintenance activities with `get_maintenance_log` service
+- **13 Maintenance Types**: Blade Sharpening, Oil Change, Air Filter, Spark Plug, Belt Replacement, Tire/Wheel Service, Cleaning, Winterization, Spring Prep, Calibration, Nozzle Replacement, General Service, Other
+
+### Unified Activity History
+- **All-in-One View**: See mowing, chemical applications, and maintenance in a single sensor
+- **Cross-Zone History**: `get_activity_history` service shows activities across all zones
+- **Activity History Sensor**: Per-zone sensor with recent activities in the attributes
+
+### Enhanced Seasonal Intelligence
+- **Pre-Emergent Timing**: Detailed recommendations based on estimated soil temperature
+- **Scalping Recommendations**: When and how to scalp warm-season grass
+- **Dethatching Guidance**: Season-specific dethatching recommendations with alternatives
+- **Aeration Timing**: Best times to core aerate based on grass type
+- **Soil Temperature Estimates**: Calculated from air temperature with seasonal offsets
+- **Weather-Based Alerts**: Wind speed warnings for spray drift, humidity for disease risk, heat stress alerts
+
+### Equipment Persistence
+- **Shared Equipment**: When adding a new zone, existing equipment is detected and shown
+- **Skip or Add More**: Option to use existing equipment or add additional pieces
+- **No Duplicate Entry**: Equipment carries across all zones automatically
+
+### Better Date Handling
+- **Activity Date**: Renamed from "Application Date" for clarity
+- **Back-Date Activities**: Set the date picker to any past date to log historical activities
+- **Up to 1 Year Back**: Log activities from up to 365 days ago
+
+### HACS Branding
+- **Proper Logo**: 512x512 icon and logo PNG files for HACS integration page
+- **Clean Manifest**: Removed non-standard fields for better compatibility
+
+---
+
+## Features
+
+### Professional Chemical Calculations
 - **Accurate Application Rates**: Based on manufacturer specifications for 10+ chemicals
 - **Equipment-Specific Mixing**: Custom mixing instructions for your exact equipment
 - **Kitchen Measurements**: Cups, tablespoons, and teaspoons for easy measuring
-- **Water Requirements**: Proper dilution ratios (e.g., T-Nex: 0.25 oz per gallon)
+- **Water Requirements**: Proper dilution ratios for liquid applications
 - **Zone-Based Calculations**: Uses your specific lawn size for precise amounts
+- **In-Control Calculator**: Calculate rates directly from the UI with the "Calculate Application Rate" button
 
-### 🔧 Equipment Management System
+### Equipment Management
 - **Multi-Step Setup**: Guided configuration flow for zones and equipment
 - **Equipment Inventory**: Track sprayers, spreaders, and their capacities
-- **Dynamic Dropdowns**: Equipment selection in services updates automatically
-- **Smart Entity Creation**: Application Method entity intelligently switches to Equipment Selection
-- **Smart Defaults**: Equipment Selection now defaults to your actual equipment, not "None"
-- **Multi-Zone Friendly**: Clear guidance that equipment is shared across all lawn zones
+- **Maintenance Logging**: Track blade sharpening, oil changes, and other maintenance
+- **Smart Defaults**: Equipment Selection defaults to your actual equipment
+- **Multi-Zone Friendly**: Equipment is shared across all lawn zones
 
-### 📊 Smart Tracking & Intelligence
+### Smart Tracking & Intelligence
 - **Mowing Tracking**: Track last mow date and due dates with customizable intervals
 - **Chemical Application Tracking**: Monitor fertilizer, herbicide, and other chemical applications
 - **Weather Intelligence**: Smart weather-based recommendations for lawn activities
 - **Seasonal Intelligence**: Grass-type aware seasonal recommendations and task management
+- **Activity History**: Unified history of all lawn care activities per zone
 - **Smart Notifications**: Optional mobile notifications for optimal lawn care timing
 
-### 🎯 Enhanced Services
-- **Calculate Application Rate**: Professional mixing instructions with kitchen measurements
-- **List Calculation Options**: Get available equipment and zones for rate calculations
-- **Equipment Management**: Add, delete, and manage your lawn equipment
-- **Response-Based Services**: No more log file hunting - get results directly
+### Seasonal Intelligence
+- **Pre-Emergent Alerts**: Soil temperature-based timing for crabgrass prevention
+- **Scalping Guidance**: When to scalp warm-season grass in spring
+- **Dethatching Windows**: Best times to dethatch with alternatives
+- **Aeration Scheduling**: Season-specific core aeration recommendations
+- **Temperature Warnings**: Heat stress, freeze, and wind alerts
+- **Disease Risk**: High humidity + warmth = fungal disease warnings
 
-## 🚀 Quick Start
+---
 
-### Installation
-1. **Download Integration**: Copy all files to `config/custom_components/lawn_manager/`
-2. **Restart Home Assistant**
-3. **Add Integration**: 
-   - Go to Settings > Devices & Services 
-   - Click "Add Integration"
-   - Search for "Lawn Manager"
-   - Click to configure
+## Setup Guide
 
-### 🎯 New 3-Step Configuration Flow
+### 3-Step Configuration Flow
 
-#### Step 1: Basic Configuration
+**Step 1: Basic Configuration**
 - **Zone Name**: "Front Yard", "Back Yard", etc.
 - **Location**: Your city/state for seasonal intelligence
 - **Lawn Size**: Square footage for accurate calculations
-- **Mow Interval**: How often you typically mow (7-14 days)
-- **Weather Entity**: Select your weather integration
+- **Mowing Schedule**: Human-readable options from "Every 3 days" to "Monthly"
+- **Weather Entity**: Select standard weather or AWN weather station
 - **Grass Type**: Choose your specific grass type
 
-#### Step 2: Equipment Collection
-- **Add Equipment**: Add multiple pieces of equipment
-  - **Type**: Sprayer or Spreader
-  - **Brand**: Custom brand name (Ryobi, John Deere, etc.)
-  - **Capacity**: Equipment capacity (4 gallons, 50 pounds, etc.)
-  - **Units**: Gallons/liters for sprayers, pounds/kg for spreaders
-- **Smart Actions**: "Add this equipment and continue adding" or "Skip adding equipment"
-- **Live Preview**: See your equipment list as you build it
+**Step 2: Equipment Collection**
+- Shows existing equipment if any (shared across zones)
+- Option to add new equipment or use existing
+- **Type**: Sprayer or Spreader
+- **Brand**: Any brand name
+- **Capacity**: Equipment capacity with units
 
-#### Step 3: Confirmation
-- **Summary**: Review all settings and equipment
-- **Restart Warning**: Clear instructions to restart Home Assistant
-- **Dynamic Services**: After restart, services get custom dropdowns with your equipment
+**Step 3: Confirmation**
+- Review all settings and equipment
 
-## 🧪 Chemical Application Calculator
+### Reconfiguring (No Reinstall Needed!)
+1. Go to Settings → Devices & Services → Lawn Manager
+2. Click "Configure" on any zone
+3. Choose what to change: Zone Settings, Weather Source, or Grass Type
+4. Save — the integration reloads automatically
 
-### Professional-Grade Calculations with Smart Detection
-The integration provides **accurate, manufacturer-based** application rates with **automatic liquid vs granular detection**:
+---
+
+## Dashboard Setup
+
+### Example Dashboard YAML
+
+Add these entities to your Lovelace dashboard. Replace `{entry_id}` with your zone's entry ID:
+
+```yaml
+type: entities
+title: Mowing Controls
+entities:
+  - entity: select.lawn_manager_{entry_id}_activity_type_selection
+  - entity: number.lawn_manager_{entry_id}_height_of_cut
+  - entity: date.lawn_manager_{entry_id}_application_date
+  - entity: button.lawn_manager_{entry_id}_log_mow
+```
+
+```yaml
+type: entities
+title: Chemical Application
+entities:
+  - entity: select.lawn_manager_{entry_id}_chemical_selection
+  - entity: text.lawn_manager_{entry_id}_custom_chemical_name
+  - entity: select.lawn_manager_{entry_id}_application_rate
+  - entity: select.lawn_manager_{entry_id}_custom_rate_unit
+  - entity: text.lawn_manager_{entry_id}_custom_rate_multiplier
+  - entity: select.lawn_manager_{entry_id}_equipment_select
+  - entity: button.lawn_manager_{entry_id}_log_chemical
+  - entity: button.lawn_manager_{entry_id}_calculate_rate
+```
+
+```yaml
+type: entities
+title: Zone Status
+entities:
+  - entity: sensor.{zone_name}_last_lawn_activity
+  - entity: sensor.{zone_name}_mow_due_date
+  - entity: binary_sensor.{zone_name}_needs_mowing
+  - entity: sensor.{zone_name}_weather_conditions
+  - entity: sensor.{zone_name}_seasonal_intelligence
+  - entity: sensor.{zone_name}_activity_history
+  - entity: sensor.{zone_name}_equipment_inventory
+  - entity: sensor.{zone_name}_application_rate_calculator
+```
+
+---
+
+## Chemical Application Calculator
+
+### Supported Chemicals
 
 | Chemical | Liquid Rate (Sprayer) | Granular Rate (Spreader) | Notes |
 |----------|----------------------|-------------------------|-------|
-| **Fertilizer 10-10-10** | - | 10 lbs per 1,000 sq ft | 10% nitrogen - granular only |
-| **T-Nex / PGR** | 0.375 oz per 1,000 sq ft | - | Liquid only - 0.25 oz per gallon water |
-| **Weed Preventer** | 0.185 oz per 1,000 sq ft | 3.5 lbs per 1,000 sq ft | Pre-emergent timing critical |
-| **Iron Supplement** | 2 oz per 1,000 sq ft | 0.75 lbs per 1,000 sq ft | 2 oz per gallon water for liquid |
-| **Disease Preventer** | 1.5 oz per 1,000 sq ft | - | Liquid only - temperature sensitive |
-| **Insecticide** | 0.75 oz per 1,000 sq ft | 3.0 lbs per 1,000 sq ft | Broad spectrum control |
-| **Soil Conditioner** | 3.0 oz per 1,000 sq ft | 2.0 lbs per 1,000 sq ft | Humic acid - improves soil structure |
-| **Urea** | - | 1.6 lbs per 1,000 sq ft | 46-0-0 nitrogen - granular only |
-| **Grub Killer** | - | 3.0 lbs per 1,000 sq ft | Curative treatment - granular only |
+| **Fertilizer 10-10-10** | - | 10 lbs per 1,000 sq ft | Granular only |
+| **T-Nex / PGR** | 0.375 oz per 1,000 sq ft | - | Liquid only |
+| **Weed Preventer** | 0.185 oz per 1,000 sq ft | 3.5 lbs per 1,000 sq ft | Pre-emergent |
+| **Iron Supplement** | 2 oz per 1,000 sq ft | 0.75 lbs per 1,000 sq ft | 2 oz/gal water |
+| **Disease Preventer** | 1.5 oz per 1,000 sq ft | - | Liquid only |
+| **Insecticide** | 0.75 oz per 1,000 sq ft | 3.0 lbs per 1,000 sq ft | Broad spectrum |
+| **Soil Conditioner** | 3.0 oz per 1,000 sq ft | 2.0 lbs per 1,000 sq ft | Humic acid |
+| **Urea** | 1.2 oz per 1,000 sq ft | 1.6 lbs per 1,000 sq ft | 46-0-0 nitrogen |
+| **Grub Killer** | - | 3.0 lbs per 1,000 sq ft | Curative |
 
-### 🤖 Smart Application Detection
-- **Sprayer + Liquid Data Available** = Liquid application with oz/1000 sqft rates
-- **Spreader Selected** = Granular application with lb/1000 sqft rates  
-- **Dual-Rate Chemicals** = Automatically chooses correct rate based on equipment
-- **Enhanced Sensor Data** = Shows application type, total amounts needed, and zone information
+### Kitchen Measurements
 
-### 🥄 Kitchen Measurements
-Get mixing instructions in **kitchen-friendly measurements**:
+Get mixing instructions in kitchen-friendly measurements:
 
-**Example (T-Nex, 5,000 sq ft, 4-gallon sprayer):**
 ```
-Total needed: 1.875 oz (3.8 tbsp)
-Mix 1.0 oz per 4-gallon tank (2.0 tbsp or 1/8 cup)
-Per gallon: 0.25 oz (0.5 tbsp per gallon)
+Example (T-Nex, 5,000 sq ft, 4-gallon sprayer):
+  Total needed: 1.875 oz (3.8 tbsp)
+  Mix 1.0 oz per 4-gallon tank (2.0 tbsp or 1/8 cup)
+  Per gallon: 0.25 oz (0.5 tbsp per gallon)
 ```
 
-### 🎯 Using the Calculator
-1. **Run Service**: `lawn_manager.calculate_application_rate`
-2. **Select Chemical**: Choose from dropdown
-3. **Select Equipment**: Your equipment appears in dropdown
-4. **Select Zone**: Your zones appear in dropdown
-5. **Get Results**: Professional mixing instructions with kitchen measurements
+---
 
-## 🔧 Equipment Management
+## Services Reference
 
-### Smart Equipment System
-- **Automatic Entity Creation**: Equipment Selection entity replaces Application Method
-- **Dynamic Dropdowns**: Services automatically include your equipment
-- **Capacity-Aware Calculations**: Mixing instructions based on your exact equipment
-- **Equipment Storage**: Persistent equipment inventory across restarts
+### Core Services
+```yaml
+# Log mowing / lawn activity
+service: lawn_manager.log_lawn_activity
+data:
+  zone: <config_entry_id>
+  cut_type: "Regular Maintenance"
+  height_of_cut: 2.5
+  application_date: "2026-02-15"  # Back-date up to 1 year
 
-### Equipment Types Supported
-**Sprayers:**
-- Backpack sprayers (gallons/liters)
-- Tank sprayers (gallons/liters)
-- Hand-held sprayers (gallons/liters)
+# Log chemical application
+service: lawn_manager.log_application
+data:
+  chemical_select: "Fertilizer 10-10-10"
+  method: "Sprayer"
+  rate_override: "Custom"
+  custom_rate: "2.5"
+  custom_rate_unit: "oz per 1,000 sq ft"
+  application_date: "2026-02-15"
 
-**Spreaders:**
-- Broadcast spreaders (pounds/kg)
-- Drop spreaders (pounds/kg)
-- Hand-held spreaders (pounds/kg)
+# Calculate application rates (from controls button or dev tools)
+service: lawn_manager.calculate_application_rate
+data:
+  chemical: "T-Nex / PGR"
+  equipment_name: "Ryobi 4 gallon Sprayer"
+  zone: "Front Yard"
+```
+
+### Custom Products Inventory
+```yaml
+# Add a custom product
+service: lawn_manager.add_custom_product
+data:
+  product_name: "Milorganite 6-4-0"
+  product_type: "fertilizer"
+  rate_lb_per_1000sqft: 8.0
+  interval_days: 45
+  application_method: "spreader"
+  notes: "Organic slow-release nitrogen"
+
+# List all custom products
+service: lawn_manager.list_custom_products
+
+# Delete a custom product
+service: lawn_manager.delete_custom_product
+data:
+  product_id: "abc12345"
+```
+
+### Equipment Maintenance
+```yaml
+# Log maintenance
+service: lawn_manager.log_maintenance
+data:
+  equipment_name: "Ryobi 4 gallon Sprayer"
+  maintenance_type: "Nozzle Replacement"
+  notes: "Replaced with TeeJet XR11002"
+  cost: 12.50
+
+# View maintenance log
+service: lawn_manager.get_maintenance_log
+data:
+  equipment_name: "Ryobi 4 gallon Sprayer"  # Optional filter
+```
+
+### Activity History
+```yaml
+# Get unified history across all zones
+service: lawn_manager.get_activity_history
+```
 
 ### Equipment Services
-- **Add Equipment**: `lawn_manager.add_equipment`
-- **Delete Equipment**: `lawn_manager.delete_equipment`
-- **List Options**: `lawn_manager.get_equipment_options` (with response)
-- **Calculate Rates**: `lawn_manager.calculate_application_rate` (with response)
+```yaml
+service: lawn_manager.add_equipment
+data:
+  equipment_type: "sprayer"
+  brand: "Ryobi"
+  capacity: 4
+  capacity_unit: "gallons"
 
-## 📱 Smart Notifications (Optional)
+service: lawn_manager.get_equipment_options
+service: lawn_manager.get_zone_options
+service: lawn_manager.list_calculation_options
+service: lawn_manager.delete_equipment
+service: lawn_manager.refresh_equipment_entity
+service: lawn_manager.reload
+```
+
+---
+
+## Smart Notifications (Optional)
 
 Get intelligent mobile notifications for optimal lawn care timing!
 
@@ -184,254 +331,95 @@ Get intelligent mobile notifications for optimal lawn care timing!
 - **Basic Notifications**: Simple overdue alerts and good weather notifications
 
 ### Notification Types
-- 🚨 **Mowing Overdue**: High priority alerts when mowing is overdue
-- 🌱 **Good Weather**: Notifications when conditions are perfect for lawn activities
-- 🌿 **Chemical Opportunities**: Optimal timing for fertilizer and herbicide applications
-- ⛈️ **Weather Alerts**: Rain warnings for recent chemical applications
-- 📅 **Seasonal Tasks**: High priority seasonal lawn care reminders
-- 🌡️ **Temperature Alerts**: Heat/cold warnings for lawn activities
+- **Mowing Overdue**: High priority alerts when mowing is overdue
+- **Good Weather**: Notifications when conditions are perfect for lawn activities
+- **Chemical Opportunities**: Optimal timing for fertilizer and herbicide applications
+- **Weather Alerts**: Rain warnings for recent chemical applications
+- **Seasonal Tasks**: High priority seasonal lawn care reminders
+- **Temperature Alerts**: Heat/cold warnings for lawn activities
 
-See [NOTIFICATIONS.md](NOTIFICATIONS.md) for detailed setup instructions.
+See [NOTIFICATIONS.md](custom_components/lawn_manager/NOTIFICATIONS.md) for detailed setup instructions.
 
-## 🧠 Seasonal Intelligence
+---
 
-### Grass Type Support
-- **Warm Season**: Bermuda, Zoysia, St. Augustine, Centipede
-- **Cool Season**: Fescue, Kentucky Bluegrass, Ryegrass, Fine Fescue
+## Grass Type Support
 
-### Smart Recommendations
-- **Seasonal Mowing Frequency**: Adjusts based on grass type and growing season
-- **Chemical Timing**: Seasonal recommendations for pre-emergent, fertilizer, etc.
-- **Temperature Warnings**: Heat stress and cold weather alerts
-- **Application History**: Smart recommendations based on your actual application history
+### Warm Season
+Bermuda, Zoysia, St. Augustine, Centipede
 
-## 🌦️ Weather Intelligence
+### Cool Season
+Fescue, Kentucky Bluegrass, Ryegrass, Fine Fescue
 
-### Weather-Based Features
-- **Recent Rain Detection**: Checks last 6 hours for rain/high humidity
-- **Future Rain Forecasting**: Looks ahead 2-6 hours for rain
+### Custom
+Enter any grass type with warm, cool, or transition zone classification.
+
+---
+
+## Weather Intelligence
+
+- **Recent Rain Detection**: Checks for rain and high humidity
+- **Future Rain Forecasting**: Looks ahead for rain in the forecast
 - **Drying Time Logic**: Ensures grass is dry before mowing recommendations
 - **Chemical-Specific Logic**: Different weather requirements for fertilizers vs herbicides
+- **Wind Speed Warnings**: Spray drift alerts for windy conditions
+- **AWN Support**: Use your local Ambient Weather Network station for hyperlocal data
 
-### Smart Recommendations
-- "Good conditions - no rain for 2 days, grass should be dry"
-- "Rain expected in 1.2 hours - wait or finish quickly"
-- "Light rain expected in 4 hours will help fertilizer absorption"
+---
 
-## 🛠️ Services Reference
-
-### Core Services
-```yaml
-# Log mowing activity
-service: lawn_manager.log_mow
-data:
-  application_date: "2024-01-15"  # Optional, defaults to today
-
-# Log chemical application
-service: lawn_manager.log_application
-data:
-  chemical_select: "Fertilizer 10-10-10"
-  method: "Sprayer"  # or "Spreader"
-  application_date: "2024-01-15"  # Optional
-
-# Calculate application rates
-service: lawn_manager.calculate_application_rate
-data:
-  chemical: "T-Nex / PGR"
-  equipment_name: "Ryobi 4 Gallon Sprayer"
-  zone: "Front Yard"
-```
-
-### Equipment Services
-```yaml
-# Add equipment
-service: lawn_manager.add_equipment
-data:
-  equipment_type: "sprayer"
-  brand: "Ryobi"
-  capacity: 4
-  capacity_unit: "gallons"
-
-# Get equipment options (with response)
-service: lawn_manager.get_equipment_options
-
-# Get zone options (with response)
-service: lawn_manager.get_zone_options
-
-# List calculation options (with response)
-service: lawn_manager.list_calculation_options
-```
-
-### Utility Services
-```yaml
-# Reload integration
-service: lawn_manager.reload
-
-# Refresh equipment entities
-service: lawn_manager.refresh_equipment_entity
-```
-
-## 📊 Example Sensor Output
-
-### Mow Due Sensor
-```yaml
-State: 2  # Days since last mow
-Attributes:
-  last_mow: "2024-01-15"
-  days_until_due: -2  # Negative means overdue
-  weather_suitable_for_mowing: true
-  weather_recommendation: "Good conditions - no rain for 2 days"
-  seasonal_recommended_frequency: 7
-  seasonal_frequency_reason: "Moderate growing season"
-```
-
-### Equipment Selection Entity
-```yaml
-State: "Ryobi 4 Gallon Sprayer"
-Attributes:
-  equipment_type: "sprayer"
-  capacity: 4
-  capacity_unit: "gallons"
-  brand: "Ryobi"
-  friendly_name: "Ryobi 4 Gallon Sprayer"
-```
-
-### Chemical Application Sensor (Enhanced with Zone Names)
-```yaml
-Name: "Front Yard T-Nex (Applied Today)"
-State: 0  # Days since last application
-Attributes:
-  last_applied: "2025-01-17"
-  next_due: "2025-02-10"
-  interval_days: 24
-  default_amount_oz_per_1000sqft: 0.375
-  applied_amount_oz_per_1000sqft: 0.563  # Heavy rate (150%)
-  rate_multiplier: 1.5
-  rate_description: "Heavy (150%)"
-  method: "Sprayer"
-  application_type: "liquid"
-  lawn_size_sqft: 3000
-  total_chemical_needed_oz: 1.688
-  yard_zone: "Front Yard"
-  weather_suitable_for_application: true
-  weather_recommendation: "Perfect conditions - no rain expected"
-```
-
-## 💡 Daily Usage
-
-### Professional Chemical Applications
-1. **Calculate Rates**: Use `calculate_application_rate` service
-2. **Get Mixing Instructions**: Professional instructions with kitchen measurements
-3. **Apply Chemicals**: Follow the precise mixing ratios
-4. **Log Application**: Record the application for tracking
-
-### Equipment Management
-1. **Add Equipment**: Use the config flow or `add_equipment` service
-2. **Select Equipment**: Choose from dropdowns in services
-3. **Calculate Rates**: Get equipment-specific mixing instructions
-4. **Manage Inventory**: Add/remove equipment as needed
-
-### Dashboard Integration
-Add sensors to your Home Assistant dashboard:
-- **Mow Due Status**: Shows days until/overdue with weather info
-- **Equipment Selection**: Choose equipment for applications
-- **Seasonal Intelligence**: Current season and priority tasks
-- **Weather Conditions**: Suitability for lawn activities
-- **Chemical Trackers**: Days since last application
-
-## 🔄 Integration Removal & Cleanup
-
-When you remove the integration, it automatically:
-- ✅ **Removes all stored data** (applications, equipment, settings)
-- ✅ **Restores services.yaml** to original text field format
-- ✅ **Cleans up equipment storage**
-- ✅ **Removes all entities** and sensors
-
-## ❓ FAQ
-
-**Q: How accurate are the chemical calculations?**
-A: All rates are based on manufacturer specifications and professional lawn care standards. Rates include proper dilution ratios and application methods.
-
-**Q: Can I use kitchen measurements instead of ounces?**
-A: Yes! The calculator provides cups, tablespoons, and teaspoons for easy measuring. For example, 1 oz = 2 tbsp = 6 tsp.
-
-**Q: What if my equipment isn't in the brand list?**
-A: The brand field is now a text input - you can enter any brand name (John Deere, Craftsman, etc.).
-
-**Q: Do I need to restart Home Assistant after adding equipment?**
-A: Yes, after the initial setup to enable dynamic dropdowns. The config flow will remind you.
-
-**Q: Can I track multiple lawn areas?**
-A: Yes! Each integration instance tracks one lawn area with complete data isolation. Add multiple instances for different areas (front yard, back yard, etc.). Chemical applications in one zone won't appear in other zones.
-
-**Q: What if I don't know my grass type?**
-A: The integration defaults to Bermuda grass. You can change it later in the configuration.
-
-**Q: How do I get the mixing instructions?**
-A: Use the `calculate_application_rate` service with your chemical, equipment, and zone. You'll get professional mixing instructions with kitchen measurements.
-
-**Q: How does equipment work with multiple zones?**
-A: Equipment is shared across ALL zones for convenience - you don't need to add equipment for each zone. However, chemical applications are tracked separately per zone, so T-Nex applied in the Front Yard won't show up in Back Yard sensors.
-
-**Q: Why are my chemical calculations showing zeros?**
-A: The integration now automatically detects liquid vs granular applications. Make sure you're using the right equipment type (Sprayer for liquids, Spreader for granular) and the chemical supports that application method.
-
-## 🐛 Troubleshooting
+## Troubleshooting
 
 ### Common Issues
-- **Equipment Not Showing**: Reload integration after adding equipment
-- **Equipment Defaults to "None"**: This has been fixed - equipment now defaults to your actual equipment
-- **Chemical Applications Cross-Contaminating Zones**: This has been fixed - each zone now has completely separate data storage
-- **T-Nex/Disease Preventer Showing Zero Amounts**: This has been fixed - liquid chemicals now calculate properly
-- **Calculate Rates Not Working**: Ensure you've selected equipment from dropdown
-- **Kitchen Measurements Missing**: Check that chemical has liquid rates defined
+- **Logo Not Showing**: Restart Home Assistant after installation
+- **Equipment Not Showing**: Reload integration after adding equipment via service
+- **Can't Change Mow Interval**: Use the "Configure" button on the integration (no reinstall needed!)
+- **Chemical Calculations Showing Zero**: Ensure equipment type matches (Sprayer for liquids, Spreader for granular)
+- **AWN Not Listed**: Ensure your AWN integration is set up and entities are available in HA
 - **Services Not Updating**: Restart Home Assistant after initial setup
-- **Integration Icon Not Showing**: Restart Home Assistant after installation
 
 ### Logs
-Check Home Assistant logs for:
-- `custom_components.lawn_manager` - Integration logs
-- Equipment update signals and service responses
+Check Home Assistant logs for: `custom_components.lawn_manager`
 
-## 📁 File Structure
+---
+
+## File Structure
 
 ```
 lawn_manager/
-├── __init__.py                           # Integration setup & cleanup
-├── manifest.json                         # Integration metadata
-├── config_flow.py                        # 3-step configuration UI
-├── const.py                             # Chemical rates & constants
-├── sensor.py                            # Main sensor logic
-├── binary_sensor.py                     # Binary sensors
-├── services.py                          # Service implementations
-├── services.yaml                        # Service definitions
-├── weather_helper.py                    # Weather intelligence
-├── seasonal_helper.py                   # Seasonal intelligence
-├── blueprints/                          # Optional notification blueprints
-│   ├── lawn_manager_notifications.yaml  # Advanced notifications
-│   └── lawn_manager_basic_notifications.yaml # Simple notifications
-├── NOTIFICATIONS.md                     # Notification setup guide
-└── README.md                           # This file
+├── __init__.py              # Integration setup, services, options flow support
+├── manifest.json            # Integration metadata (v1.1.0)
+├── config_flow.py           # 3-step config + options flow for reconfiguring
+├── const.py                 # Chemical rates, grass types, constants
+├── sensor.py                # Sensors (mow, chemical, weather, seasonal, history, rate calc)
+├── binary_sensor.py         # Binary sensor (needs mowing)
+├── button.py                # Buttons (log mow, log chemical, calculate rate)
+├── select.py                # Select entities (activity type, chemical, equipment, rate)
+├── text.py                  # Text entities (custom chemical name, custom rate)
+├── number.py                # Number entities (height of cut)
+├── date.py                  # Date entities (activity date for back-dating)
+├── services.py              # All service implementations
+├── services.yaml            # Service definitions (17 services)
+├── weather_helper.py        # Weather intelligence + AWN support
+├── seasonal_helper.py       # Seasonal intelligence (pre-emergent, scalp, dethatch, aerate)
+├── icon.png                 # Integration icon (512x512)
+├── logo.png                 # Integration logo (512x512)
+├── hacs.json                # HACS configuration
+├── translations/en.json     # UI translations (config + options flow)
+├── blueprints/              # Notification blueprints
+│   ├── lawn_manager_notifications.yaml
+│   └── lawn_manager_basic_notifications.yaml
+└── NOTIFICATIONS.md         # Notification setup guide
 ```
 
-## 🤝 Contributing
+---
+
+## Contributing
 
 Feel free to submit issues and enhancement requests!
 
-## 📄 License
+## License
 
 This project is licensed under the MIT License.
 
 ---
 
-**Professional lawn care made simple with Home Assistant intelligence!** 🌱
-
-### 🏆 Recent Major Improvements
-- ✅ **Perfect Zone Isolation** - Front/Back Yard data completely separate
-- ✅ **Enhanced Chemical Calculations** - Liquid vs granular auto-detection  
-- ✅ **Smart Equipment Defaults** - No more "None" selections
-- ✅ **Zone-Named Sensors** - Clear identification of which zone each sensor belongs to
-- ✅ **Rich Application Data** - Total amounts needed, application type, and comprehensive tracking
-- ✅ **Multi-Zone Friendly Config** - Clear guidance on equipment sharing
-
-Ready for production use with professional-grade lawn care tracking! 🚀 
+**Professional lawn care made simple with Home Assistant intelligence!**
