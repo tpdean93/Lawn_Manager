@@ -192,7 +192,7 @@ delete_equipment:
 
 calculate_application_rate:
   name: Calculate Application Rate
-  description: "Calculate equipment-specific application rates for your zone. Run 'list_calculation_options' first to see available equipment and zones."
+  description: "Calculate equipment-specific application rates for your zone. Run 'list_calculation_options' to see available equipment names."
   fields:
     chemical:
       name: Chemical
@@ -217,11 +217,12 @@ calculate_application_rate:
       selector:
         text:
     zone:
-      name: Zone Name
-      description: "Enter the exact zone name (e.g., 'Front Yard'). Run 'list_calculation_options' to see available zones."
+      name: Zone
+      description: "Select the zone to calculate rates for."
       required: true
       selector:
-        text:
+        config_entry:
+          integration: lawn_manager
 
 clear_equipment_storage:
   name: Clear Equipment Storage

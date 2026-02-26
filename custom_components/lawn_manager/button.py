@@ -7,6 +7,7 @@ from homeassistant.util import dt as dt_util
 import logging
 
 from .const import DOMAIN, CHEMICALS, EQUIPMENT_STORAGE_KEY, STORAGE_VERSION, get_storage_key
+from . import get_zone_store_and_data
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -196,52 +197,24 @@ class CalculateRateButton(ButtonEntity):
 
         zone = self._entry.data.get("yard_zone", "Unknown")
 
-        # Calculate directly
         from .services import _calculate_rate_direct
         result = await _calculate_rate_direct(self._hass, chemical, equipment_name, zone)
 
         if result:
-            # Save to zone storage
-            zone_storage_key = get_storage_key(eid)
-            store = Store(self._hass, STORAGE_VERSION, zone_storage_key)
-            data = await store.async_load() or {}
+            store, data = get_zone_store_and_data(self._hass, eid)
+            if not store:
+                zone_storage_key = get_storage_key(eid)
+                store = Store(self._hass, STORAGE_VERSION, zone_storage_key)
+                data = await store.async_load() or {}
             data["last_rate_calculation"] = result
             await store.async_save(data)
             _LOGGER.info("Rate calculation saved to storage for zone %s", eid)
 
-            # Force update all zone sensors
-            await _force_update_zone_sensors(self._hass, eid)
+            async_dispatcher_send(self._hass, f"lawn_manager_update_{eid}")
         else:
             _LOGGER.error("Rate calculation failed for %s / %s / %s", chemical, equipment_name, zone)
 
 
 async def _force_update_zone_sensors(hass, entry_id):
-    """Force update all lawn manager sensor entities for a zone by finding them in the entity registry."""
-    from homeassistant.helpers import entity_registry as er
-
-    try:
-        ent_reg = er.async_get(hass)
-    except Exception:
-        # Fallback to dispatcher
-        async_dispatcher_send(hass, f"lawn_manager_update_{entry_id}")
-        return
-
-    for ent_entry in ent_reg.entities.values():
-        if ent_entry.domain != "sensor" or entry_id not in ent_entry.unique_id:
-            continue
-        if "lawn_manager" not in ent_entry.entity_id:
-            continue
-
-        # Get the actual entity object and call update
-        entity_comp = hass.data.get("entity_components", {}).get("sensor")
-        if entity_comp:
-            entity_obj = entity_comp.get_entity(ent_entry.entity_id)
-            if entity_obj and hasattr(entity_obj, 'async_update'):
-                try:
-                    await entity_obj.async_update()
-                    entity_obj.async_write_ha_state()
-                except Exception as e:
-                    _LOGGER.debug("Could not force update %s: %s", ent_entry.entity_id, e)
-
-    # Also send dispatcher as backup
+    """Force update all lawn manager sensor entities for a zone via dispatcher signal."""
     async_dispatcher_send(hass, f"lawn_manager_update_{entry_id}")

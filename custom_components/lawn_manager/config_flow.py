@@ -278,16 +278,24 @@ class OptionsFlow(config_entries.OptionsFlow):
     """Handle reconfigure options for a zone."""
 
     def __init__(self, config_entry):
-        self.config_entry = config_entry
+        self._config_entry = config_entry
 
     async def async_step_init(self, user_input=None) -> FlowResult:
         """Show reconfigure form with all editable settings."""
+        import logging
+        _LOGGER = logging.getLogger(__name__)
+
+        try:
+            entry = self._config_entry
+        except AttributeError:
+            entry = self.config_entry
+
         if user_input is not None:
             mow_interval = user_input.get("mow_interval", "7")
             if isinstance(mow_interval, str):
                 mow_interval = int(mow_interval)
 
-            new_data = {**self.config_entry.data}
+            new_data = {**entry.data}
             new_data["location"] = user_input.get("location", new_data.get("location", ""))
             new_data["mow_interval"] = mow_interval
             new_data["lawn_size_sqft"] = user_input.get("lawn_size_sqft", new_data.get("lawn_size_sqft", 1000))
@@ -295,13 +303,28 @@ class OptionsFlow(config_entries.OptionsFlow):
             new_data["weather_entity"] = user_input.get("weather_entity", new_data.get("weather_entity", ""))
             new_data["rain_sensor"] = user_input.get("rain_sensor", new_data.get("rain_sensor", ""))
 
-            self.hass.config_entries.async_update_entry(self.config_entry, data=new_data)
-            await self.hass.config_entries.async_reload(self.config_entry.entry_id)
+            self.hass.config_entries.async_update_entry(entry, data=new_data)
+            await self.hass.config_entries.async_reload(entry.entry_id)
             return self.async_create_entry(title="", data={})
 
-        current = self.config_entry.data
-        weather_entities = _get_weather_entities(self.hass)
-        rain_sensors = _get_rain_sensor_entities(self.hass)
+        current = entry.data
+
+        try:
+            weather_entities = _get_weather_entities(self.hass)
+        except Exception as e:
+            _LOGGER.warning("Error getting weather entities: %s", e)
+            weather_entities = []
+
+        try:
+            rain_sensors = _get_rain_sensor_entities(self.hass)
+        except Exception as e:
+            _LOGGER.warning("Error getting rain sensors: %s", e)
+            rain_sensors = []
+
+        current_grass = current.get("grass_type", "Bermuda")
+        grass_options = list(GRASS_TYPE_LIST)
+        if current_grass not in grass_options:
+            grass_options.append(current_grass)
 
         schema_dict = {
             vol.Required("location", default=current.get("location", "")): str,
@@ -311,19 +334,29 @@ class OptionsFlow(config_entries.OptionsFlow):
             vol.Required("lawn_size_sqft", default=current.get("lawn_size_sqft", 1000)): vol.All(
                 vol.Coerce(int), vol.Range(min=100, max=100000)
             ),
-            vol.Required("grass_type", default=current.get("grass_type", "Bermuda")): vol.In(GRASS_TYPE_LIST),
+            vol.Required("grass_type", default=current_grass): vol.In(grass_options),
         }
 
         if weather_entities:
-            weather_options = [("", "None")] + weather_entities
-            schema_dict[vol.Optional("weather_entity", default=current.get("weather_entity", ""))] = vol.In(
-                {k: v for k, v in weather_options}
+            weather_options_dict = {"": "None"}
+            for eid, name in weather_entities:
+                weather_options_dict[eid] = name
+            current_weather = current.get("weather_entity", "")
+            if current_weather and current_weather not in weather_options_dict:
+                weather_options_dict[current_weather] = f"{current_weather} (not found)"
+            schema_dict[vol.Optional("weather_entity", default=current_weather)] = vol.In(
+                weather_options_dict
             )
 
         if rain_sensors:
-            rain_options = [("", "None (use forecast data)")] + rain_sensors
-            schema_dict[vol.Optional("rain_sensor", default=current.get("rain_sensor", ""))] = vol.In(
-                {k: v for k, v in rain_options}
+            rain_options_dict = {"": "None (use forecast data)"}
+            for eid, name in rain_sensors:
+                rain_options_dict[eid] = name
+            current_rain = current.get("rain_sensor", "")
+            if current_rain and current_rain not in rain_options_dict:
+                rain_options_dict[current_rain] = f"{current_rain} (not found)"
+            schema_dict[vol.Optional("rain_sensor", default=current_rain)] = vol.In(
+                rain_options_dict
             )
 
         return self.async_show_form(
